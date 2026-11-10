@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v1.4.0
+/* 家の記録 v1.4.1
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -186,6 +186,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <button class="btn sm" data-a="mode" data-v="draw" aria-pressed="false">部屋を描く</button>
         <button class="btn sm" data-a="addroom">＋部屋</button>
         <button class="btn sm" data-a="mode" data-v="door" aria-pressed="false">＋ドア</button>
+        <button class="btn sm" data-a="mode" data-v="slide" aria-pressed="false">＋引き戸</button>
         <button class="btn sm" data-a="mode" data-v="window" aria-pressed="false">＋窓</button>
         <label class="filebtn"><input type="file" accept="image/*" id="planfile"><span class="btn sm">間取り図を敷く</span></label>
         <button class="btn sm" data-a="planauto">図から自動作成</button>
@@ -297,7 +298,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v1.4.0</p>
+        <p class="lead sec">家の記録 v1.4.1</p>
       </div>
     </div>
   </section>
@@ -650,8 +651,8 @@ function initPlan(){
     if(PP.size===2){var t=two(); G={k:'pinch',d0:t.d,s0:P.s,wx:(t.cx-P.ox)/P.s,wz:(t.cy-P.oy)/P.s}; return;}
     var w=world(e);
     if(P.mode==='draw'){G={k:'draw',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
-    if(P.mode==='door'||P.mode==='window'){
-      var no=addOp(S.floor,w.x,w.z,P.mode,P.mode==='door'?0.8:1.2,Math.max(0.5,28/P.s));
+    if(P.mode==='door'||P.mode==='slide'||P.mode==='window'){
+      var no=addOp(S.floor,w.x,w.z,P.mode,P.mode==='window'?1.2:0.8,Math.max(0.5,28/P.s));
       if(no){selO=no.id; selI=selR=null; setMode('select'); G={k:'op',o:no}; $('pstat').textContent=''; refresh();}
       else{$('pstat').textContent='壁の近くをタップしてください。'; G={k:'none'};}
       return;
@@ -1112,7 +1113,7 @@ document.addEventListener('click',function(e){
   }
   else if(a==='nudge'){it=item(selI); if(it){it.p=[r2(it.p[0]+(+t.dataset.dx)*0.05),r2(it.p[1]+(+t.dataset.dz)*0.05)]; var nr=roomAt(it.floor,it.p[0],it.p[1]); it.room=nr?nr.id:null; refresh();}}
   else if(a==='flip'){var fo=op(selO); if(fo){if(v==='hinge') fo.hinge=(fo.hinge==='b'?'a':'b'); else fo.out=!fo.out; refresh();}}
-  else if(a==='mode'){setMode(v); if(v==='door'||v==='window') $('pstat').textContent=(v==='door'?'ドア':'窓')+'を付けたい壁をタップしてください。'; else $('pstat').textContent='';}
+  else if(a==='mode'){setMode(v); if(v==='door'||v==='slide'||v==='window') $('pstat').textContent=({door:'ドア',slide:'引き戸',window:'窓'})[v]+'を付けたい壁をタップしてください。'; else $('pstat').textContent='';}
   else if(a==='delop'){S.ops=S.ops.filter(function(o){return o.id!==selO;}); selO=null; refresh();}
   else if(a==='fit'){fitPlan(); drawPlan();}
   else if(a==='addroom'){
