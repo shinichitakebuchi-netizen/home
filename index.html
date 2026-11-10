@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v1.1.0
+/* 家の記録 v1.2.0
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -65,6 +65,8 @@ main{flex:1;min-height:0;display:grid;grid-template-rows:minmax(230px,46%) minma
 .tbar label{display:inline-block}
 .filebtn input{position:absolute;width:1px;height:1px;opacity:0}
 .filebtn input:focus-visible + span{outline:2px solid var(--blue);outline-offset:2px}
+.pstat{position:absolute;left:10px;right:10px;bottom:10px;max-width:440px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:6px;padding:7px 10px;font-size:12px}
+.pstat:empty{display:none}
 .msg{position:absolute;inset:0;display:none;flex-direction:column;gap:10px;align-items:center;justify-content:center;padding:70px 24px 24px;text-align:center;color:var(--muted);pointer-events:none}
 .msg>*{pointer-events:auto;max-width:30em}
 
@@ -178,10 +180,13 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <button class="btn sm" data-a="mode" data-v="draw" aria-pressed="false">部屋を描く</button>
         <button class="btn sm" data-a="addroom">＋部屋</button>
         <label class="filebtn"><input type="file" accept="image/*" id="planfile"><span class="btn sm">間取り図を敷く</span></label>
+        <button class="btn sm" data-a="planauto">図から自動作成</button>
+        <input type="file" accept="image/*" id="planautofile" class="hide">
         <button class="btn sm hide" data-a="planoff" id="planoff">図を外す</button>
         <button class="btn sm" data-a="fit">全体</button>
       </div>
     </div>
+    <div class="pstat hide" id="pstat" role="status"></div>
     <div class="card" id="rcard"></div>
     <div class="card" id="detail"></div>
   </section>
@@ -284,7 +289,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v1.1.0</p>
+        <p class="lead sec">家の記録 v1.2.0</p>
       </div>
     </div>
   </section>
@@ -599,6 +604,7 @@ function initPlan(){
 }
 function setMode(m){P.mode=m; [].forEach.call(document.querySelectorAll('[data-a="mode"]'),function(b){b.setAttribute('aria-pressed',String(b.dataset.v===m));});}
 function setView(v){
+  $('pstat').classList.toggle('hide',v!=='2d');
   view=v; $('view').classList.toggle('hide',v!=='3d'); $('plan').classList.toggle('hide',v!=='2d'); $('tbar').classList.toggle('hide',v!=='2d');
   [].forEach.call($('viewseg').children,function(b){b.setAttribute('aria-pressed',String(b.dataset.v===v));});
   if(v==='2d'&&!P.fit[S.floor]) fitPlan();
@@ -654,6 +660,7 @@ function renderInv(){
 }
 function renderCards(){
   var d=$('detail'), it=selI&&item(selI), rc=$('rcard'), r=(view==='2d'&&selR)?room(selR):null;
+  if(it||r) $('pstat').textContent='';
   if(it){
     d.className='card on';
     d.innerHTML=(IMG[it.id]?'<img src="'+IMG[it.id]+'" alt="">':'')
@@ -751,6 +758,62 @@ var PROMPT='写真に写っている主な家電・家具を1つだけ判定し�
  +'width_cm, height_cm, depth_cm（見た目からの目安。数値）, color_hex（本体の主な色。#RRGGBB）。メーカー名や型番を推測で作らないこと。';
 var ROOMPROMPT='この部屋の写真から、壁（壁紙）の主な色、床の主な色、照明の色味を判定し、JSONオブジェクトだけで答えてください。'
  +'キー: wall_hex, floor_hex（どちらも #RRGGBB）, light（電球色, 温白色, 昼白色, 昼光色, 不明 のどれか1つ。照明がついていない・判断できない場合は 不明）。';
+
+/* ---------- 間取り図から部屋を自動作成 ---------- */
+var PLANPROMPT='これは住宅の間取り図の画像です。図の中の部屋・スペースをすべて見つけ、JSONオブジェクトだけで答えてください。'
+ +'形式: {"rooms":[{"name":部屋名（図の表記に合わせる。例: LDK, 洋室, 和室, キッチン, 玄関, 浴室, 洗面, トイレ, 階段, 廊下, 収納, バルコニー）, '
+ +'"floor":階（1 や 2 の数値。図に階の表記がなければ 1）, "jo":畳数（図にその部屋の帖・畳の数字が書かれている場合だけ数値。なければ null）, '
+ +'"box_2d":[ymin,xmin,ymax,xmax]（その部屋を囲む長方形。画像全体を0〜1000とした座標）}], '
+ +'"image_width_m":画像の横幅全体が実際の何メートルに当たるか（寸法の表記から分かる場合だけ数値。分からなければ null）}。'
+ +'L字など長方形でない部屋は、重ならない長方形2つに分けて同じ名前で返す。部屋どうしの長方形は重ねない。図に書かれていない部屋を作らない。';
+var autoArm=0;
+function loadImg(src){return new Promise(function(res,rej){var im=new Image(); im.onload=function(){res(im);}; im.onerror=function(){rej(new Error('image'));}; im.src=src;});}
+function cluster(vs){
+  vs=vs.slice().sort(function(a,b){return a-b;}); var g=[], cur=[vs[0]], i;
+  for(i=1;i<vs.length;i++){if(vs[i]-cur[cur.length-1]<=0.2) cur.push(vs[i]); else{g.push(cur); cur=[vs[i]];}}
+  g.push(cur);
+  var cs=g.map(function(c){return snap(c.reduce(function(a,b){return a+b;},0)/c.length);});
+  return function(v){var best=cs[0]; cs.forEach(function(c){if(Math.abs(c-v)<Math.abs(best-v)) best=c;}); return best;};
+}
+async function planAuto(){
+  var st=$('pstat'), k='plan:'+S.floor, src=IMG[k];
+  if(!S.set.key){st.textContent='自動作成にはGeminiのAPIキーが必要です。「設定」で入れてください。'; return;}
+  if(!src){$('planautofile').click(); return;}
+  if(S.rooms.length&&Date.now()-autoArm>8000){autoArm=Date.now(); st.textContent='読み取った階に今ある部屋は、新しい部屋に置き換わります（物は残ります）。よければ、もう一度「図から自動作成」を押してください。'; return;}
+  autoArm=0; st.textContent='AIが間取り図を読み取っています…（数十秒かかることがあります）';
+  try{
+    var res=await gemini(PLANPROMPT,src), list=(res&&res.rooms)||(Array.isArray(res)?res:[]);
+    var im=await loadImg(src), asp=im.naturalHeight/im.naturalWidth, rs=[];
+    list.forEach(function(o){
+      var b=o&&o.box_2d; if(!b||b.length!==4) return;
+      var y0=num(b[0],0,1000), x0=num(b[1],0,1000), y1=num(b[2],0,1000), x1=num(b[3],0,1000);
+      if(y0==null||x0==null||y1==null||x1==null||x1-x0<10||y1-y0<10) return;
+      rs.push({name:String(o.name||'部屋').slice(0,20),fn:parseInt(o.floor,10)||1,jo:num(o.jo,0.5,100),x0:x0/1000,x1:x1/1000,y0:y0/1000,y1:y1/1000});
+    });
+    if(!rs.length){st.textContent='部屋を読み取れませんでした。図がはっきり写った画像で試すか、「部屋を描く」でなぞってください。'; return;}
+    /* 縮尺: 畳数（1畳=1.62㎡）が読めた部屋から求める。なければ寸法の表記、それもなければ仮の値 */
+    var est=[]; rs.forEach(function(q){if(q.jo) est.push(Math.sqrt(q.jo*1.62/((q.x1-q.x0)*(q.y1-q.y0)*asp)));});
+    est.sort(function(a,b){return a-b;});
+    var given=num(res&&res.image_width_m,2,100), wm=est.length?est[Math.floor(est.length/2)]:(given||planCfg().wm||10);
+    var how=est.length?'畳数から推定':(given?'寸法の表記から推定':'仮の値。部屋を選んで実際の幅を入れると合わせられます');
+    wm=Math.max(3,Math.min(100,wm));
+    var same=rs.every(function(q){return q.fn===rs[0].fn;}), targets={};
+    rs.forEach(function(q){q.f=same?S.floor:(q.fn===2?'f2':(q.fn===1?'f1':S.floor)); targets[q.f]=1;});
+    Object.keys(targets).forEach(function(f){
+      S.rooms=S.rooms.filter(function(x){return x.floor!==f;});
+      if(!S.plans[f]) S.plans[f]={}; S.plans[f].wm=wm; if(f!==S.floor) imgPut('plan:'+f,src); P.fit[f]=false;
+    });
+    var xs=[], zs=[]; rs.forEach(function(q){xs.push(q.x0*wm,q.x1*wm); zs.push(q.y0*wm*asp,q.y1*wm*asp);});
+    var fx=cluster(xs), fz=cluster(zs), n=0;
+    rs.forEach(function(q){
+      var x=fx(q.x0*wm), x2=fx(q.x1*wm), z=fz(q.y0*wm*asp), z2=fz(q.y1*wm*asp); if(x2-x<0.3||z2-z<0.3) return;
+      S.rooms.push({id:nid('r'),floor:q.f,name:q.name,x:x,z:z,w:r2(x2-x),d:r2(z2-z),wall:null,fl:null,light:null,lux:50}); n++;
+    });
+    S.items.forEach(function(it){var rr=roomAt(it.floor,it.p[0],it.p[1]); it.room=rr?rr.id:null;});
+    selI=selR=null; fitNext=true; fitPlan(); refresh();
+    st.textContent='部屋を'+n+'個作りました'+(Object.keys(targets).length>1?'（1階と2階に振り分け）':'')+'。縮尺は'+how+'。AIの読み取りなので、ずれている所は「選ぶ・動かす」で直してください。';
+  }catch(err){st.textContent='読み取りに失敗しました（'+(err&&err.message||'通信エラー')+'）。少し待ってもう一度試してください。';}
+}
 
 /* ---------- 登録・編集フォーム ---------- */
 var E={id:null,photo:null,pa:1}, job=0;
@@ -928,6 +991,7 @@ document.addEventListener('click',function(e){
     r={id:nid('r'),floor:S.floor,name:'部屋'+(rs.length+1),x:last?r2(last.x+last.w):0,z:last?last.z:0,w:3.6,d:2.7,wall:null,fl:null,light:null,lux:50};
     S.rooms.push(r); selR=r.id; selI=null; setMode('select'); fitPlan(); refresh();
   }
+  else if(a==='planauto') planAuto();
   else if(a==='planoff'){imgDel('plan:'+S.floor); refresh();}
   else if(a==='ff'){fFloor=v; renderChips(); renderList();}
   else if(a==='sel'){selectItem(v);}
@@ -969,6 +1033,7 @@ document.addEventListener('change',function(e){
   else if(d.rf){r=room(selR); if(!r) return;
     if(d.rf==='name') r.name=t.value.trim()||r.name; else {var v=num(t.value,0.3,50); if(v) r[d.rf]=v;}
     refresh();}
+  else if(t.id==='planautofile'){f=t.files&&t.files[0]; t.value=''; if(f) toJpeg(f,1600).then(function(ph){imgPut('plan:'+S.floor,ph.url); autoArm=Date.now(); fitPlan(); refresh(); planAuto();}).catch(function(){$('pstat').textContent='画像を開けませんでした。';});}
   else if(t.id==='planfile'){f=t.files&&t.files[0]; t.value=''; if(f) toJpeg(f,1600).then(function(ph){imgPut('plan:'+S.floor,ph.url); fitPlan(); refresh();}).catch(function(){});}
   else if(t.id==='s-theme'){S.set.theme=t.value; applyTheme(); renderDeco(); redraw();}
   else if(t.id==='s-key'){S.set.key=t.value.trim(); save();}
