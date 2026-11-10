@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v1.3.0
+/* 家の記録 v1.4.0
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -80,7 +80,7 @@ main{flex:1;min-height:0;display:grid;grid-template-rows:minmax(230px,46%) minma
 .card dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
 .x{flex:none;align-self:flex-start;border:0;background:none;font-size:20px;line-height:1;padding:2px 6px;color:var(--muted)}
-.rgrid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px}
+.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px}
 .rgrid label,.scale label{display:flex;flex-direction:column;font-size:11px;color:var(--muted);gap:2px}
 .scale{display:flex;gap:6px;align-items:flex-end;margin-top:8px;flex-wrap:wrap}
 .scale label{width:8em}
@@ -116,6 +116,11 @@ ul.rows{list-style:none;margin:0;padding:0}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 12px;font-size:13px;white-space:nowrap}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .btn.sm{padding:3px 9px;font-size:12px}
+.btn:disabled{opacity:.4;cursor:default}
+.stp{display:flex;gap:3px}
+.stp input{min-width:0;text-align:center;padding:5px 2px}
+.stp button{flex:none;width:30px;border:1px solid var(--line);background:var(--surface);border-radius:6px;font-size:16px;line-height:1;padding:0}
+.rgrid .full{grid-column:1/-1}
 .btn.danger{color:var(--warn);border-color:var(--warn)}
 .btn[aria-pressed="true"]{border-color:var(--ink);font-weight:600;background:var(--ink);color:var(--bg)}
 
@@ -173,6 +178,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <button data-a="view" data-v="3d" aria-pressed="true">3D</button>
         <button data-a="view" data-v="2d" aria-pressed="false">間取り</button>
       </div>
+      <button class="btn sm" data-a="undo" id="undo" disabled>↶ 元に戻す</button>
       <span class="grow"></span>
       <div class="seg" id="floorseg"></div>
       <div class="tbar hide" id="tbar">
@@ -291,7 +297,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v1.3.0</p>
+        <p class="lead sec">家の記録 v1.4.0</p>
       </div>
     </div>
   </section>
@@ -323,12 +329,27 @@ function norm(o){var b=fresh(); o.set=Object.assign(b.set,o.set||{}); o.plans=o.
 try{var raw=localStorage.getItem(KEY); if(raw){var o=JSON.parse(raw); if(o&&o.v===1&&o.rooms&&o.items) S=norm(o);}}catch(e){}
 /* 同期で比べる中身（今どの階を見ているかは端末ごとなので含めない） */
 function syncStr(){var f=S.floor; S.floor=''; var t=JSON.stringify(S); S.floor=f; return t;}
-var saveT=0, lastStr=syncStr();
-function save(){clearTimeout(saveT); saveT=setTimeout(function(){
+var saveT=0, lastStr=syncStr(), HIST=[];
+function commit(){
+  clearTimeout(saveT);
   var ok=true; try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){ok=false;}
-  var t=syncStr(); if(t!==lastStr){lastStr=t; markDirty();}
+  var t=syncStr(); if(t!==lastStr){HIST.push(lastStr); if(HIST.length>40) HIST.shift(); lastStr=t; markDirty(); undoUi();}
   if(!ok) $('saved').textContent='保存できませんでした'; else if(!SY.on) $('saved').textContent='保存済み（この端末）';
-},300);}
+}
+function save(){clearTimeout(saveT); saveT=setTimeout(commit,300);}
+function undoUi(){$('undo').disabled=!HIST.length;}
+/* 元に戻す: 直前の状態（間取り・物・内装・ドアや窓）に1つ戻る。消した写真そのものは戻らない */
+function undo(){
+  commit(); if(!HIST.length) return;
+  var prev=HIST.pop(), fl=S.floor;
+  try{S=norm(JSON.parse(prev));}catch(e){return;}
+  if(S.floors.some(function(f){return f.id===fl;})) S.floor=fl;
+  Object.keys(S.imgv).forEach(function(k){if(!IMG[k]) delete S.imgv[k];});
+  lastStr=syncStr(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  markDirty(); undoUi();
+  if(selI&&!item(selI)) selI=null; if(selR&&!room(selR)) selR=null; if(selO&&!op(selO)) selO=null;
+  applyTheme(); syncSettings(); refresh();
+}
 function nid(p){return p+(S.n++);}
 function room(id){for(var i=0;i<S.rooms.length;i++)if(S.rooms[i].id===id)return S.rooms[i];return null;}
 function item(id){for(var i=0;i<S.items.length;i++)if(S.items[i].id===id)return S.items[i];return null;}
@@ -413,7 +434,7 @@ function init3D(){
   var mEdge=new THREE.LineBasicMaterial({transparent:true,opacity:0.7});
   var marker=new THREE.Mesh(new THREE.OctahedronGeometry(0.13),new THREE.MeshBasicMaterial()); marker.visible=false; scene.add(marker);
   var pickable=[], mats={}, rmats=[], labels=[], TX={}, TW=0.06;
-  var mGlass=new THREE.MeshLambertMaterial({transparent:true,opacity:0.4});
+  var mGlass=new THREE.MeshLambertMaterial({transparent:true,opacity:0.4}), mDoor=new THREE.MeshLambertMaterial();
   function wallRun(h,line,ctr,a,b,mat,segs){
     if(b-a<0.01) return;
     var cuts=segs.filter(function(q){return q.h===h&&Math.abs(q.c-line)<0.12&&q.b>a+0.01&&q.a<b-0.01;})
@@ -472,6 +493,12 @@ function init3D(){
       labels.push({sp:sp,text:r.name}); rmats.push({r:r,i:i,fm:fm,wm:wm,lp:lp});
       x0=Math.min(x0,r.x); z0=Math.min(z0,r.z); x1=Math.max(x1,r.x+r.w); z1=Math.max(z1,r.z+r.d);
     });
+    floorOps().forEach(function(o){
+      var g=opSeg(o); if(!g||o.kind==='window') return;
+      var dir=(o.side==='n'||o.side==='w')?1:-1, w=g.b-g.a, hb=o.hinge==='b';
+      if(o.kind==='slide'){var m0=hb?g.b-w/4:g.a+w/4; if(g.h) box(w/2,WH,0.03,mDoor,m0,WH/2,g.c+dir*0.03); else box(0.03,WH,w/2,mDoor,g.c+dir*0.03,WH/2,m0);}
+      else{var sw=o.out?-dir:dir, hp=hb?g.b:g.a; if(g.h) box(0.04,WH,w,mDoor,hp,WH/2,g.c+sw*w/2); else box(w,WH,0.04,mDoor,g.c+sw*w/2,WH/2,hp);}
+    });
     floorItems().forEach(function(it){addItem(it); x0=Math.min(x0,it.p[0]); z0=Math.min(z0,it.p[1]); x1=Math.max(x1,it.p[0]); z1=Math.max(z1,it.p[1]);});
     if(x1<x0){x0=z0=0;x1=z1=4;}
     target.set((x0+x1)/2,0.3,(z0+z1)/2);
@@ -488,7 +515,7 @@ function init3D(){
   function paint(){
     renderer.setClearColor(new THREE.Color(css('--bg')),1);
     var ac=css('--accent'), ic=css('--item'), muted=css('--muted');
-    mEdge.color.set(css('--edge')); mGlass.color.set(css('--blue')); marker.material.color.set(ac); marker.visible=false;
+    mEdge.color.set(css('--edge')); mGlass.color.set(css('--blue')); mDoor.color.set(css('--item')); marker.material.color.set(ac); marker.visible=false;
     rmats.forEach(function(m){
       m.fm.color.set(m.r.fl||css(m.i%2?'--floor2':'--floor')); m.wm.color.set(m.r.wall||css('--wall'));
       m.lp.color.set(m.r.light||'#ffffff'); m.lp.intensity=0.44*(m.r.lux==null?50:m.r.lux)/100;
@@ -585,11 +612,18 @@ function drawPlan(){
     x.lineCap='butt'; x.strokeStyle=css('--bg'); x.lineWidth=7; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();
     if(o.kind==='window'){x.strokeStyle=on?ac:css('--blue'); x.lineWidth=4; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();}
     else{
-      /* ドア: 開いた扉の線と、開く範囲の弧を部屋の内側に描く */
-      var L=(g.b-g.a)*P.s, dir=(o.side==='n'||o.side==='w')?1:-1;
+      var dir=(o.side==='n'||o.side==='w')?1:-1, hb=o.hinge==='b', hx=hb?bx:ax, hy=hb?by:ay, ex=hb?ax:bx, ey=hb?ay:by, L=Math.hypot(bx-ax,by-ay);
       x.strokeStyle=on?ac:ink; x.lineWidth=on?2.5:1.5; x.beginPath();
-      if(g.h){x.moveTo(ax,ay); x.lineTo(ax,ay+dir*L); x.moveTo(ax,ay+dir*L); x.arc(ax,ay,L,dir>0?Math.PI/2:-Math.PI/2,0,dir>0);}
-      else{x.moveTo(ax,ay); x.lineTo(ax+dir*L,ay); x.moveTo(ax+dir*L,ay); x.arc(ax,ay,L,dir>0?0:Math.PI,Math.PI/2,dir<0);}
+      if(o.kind==='slide'){
+        /* 引き戸: 壁の線上に半分、少し内側にもう半分 */
+        var mx=(ax+bx)/2, my=(ay+by)/2, ox2=g.h?0:dir*4, oy2=g.h?dir*4:0;
+        x.lineWidth=on?3.5:2.5; x.moveTo(hx,hy); x.lineTo(mx,my); x.moveTo(mx+ox2,my+oy2); x.lineTo(ex+ox2,ey+oy2);
+      }else{
+        /* 開き戸: 蝶番の側から、開いた扉の線と開く範囲の弧を描く */
+        var sw=o.out?-dir:dir, tx=g.h?hx:hx+sw*L, ty=g.h?hy+sw*L:hy;
+        var a1=Math.atan2(ty-hy,tx-hx), a2=Math.atan2(ey-hy,ex-hx), df=a2-a1; while(df>Math.PI) df-=2*Math.PI; while(df<=-Math.PI) df+=2*Math.PI;
+        x.moveTo(hx,hy); x.lineTo(tx,ty); x.moveTo(tx,ty); x.arc(hx,hy,L,a1,a2,df<0);
+      }
       x.stroke();
     }
   });
@@ -733,21 +767,26 @@ function renderCards(){
       +(it.memo?'<dt>メモ</dt><dd>'+esc(it.memo)+'</dd>':'')+'</dl>'
       +'<div class="acts"><button class="btn sm" data-a="st" data-v="ok" data-id="'+it.id+'" aria-pressed="'+(it.st==='ok')+'">✓ あった</button>'
       +'<button class="btn sm" data-a="st" data-v="missing" data-id="'+it.id+'" aria-pressed="'+(it.st==='missing')+'">ない</button>'
-      +'<button class="btn sm" data-a="rot">向きを回す</button><button class="btn sm" data-a="edit">編集</button></div></div>'
+      +'<button class="btn sm" data-a="rot">向きを回す</button><button class="btn sm" data-a="edit">編集</button></div>'
+      +(view==='2d'?'<div class="acts"><span class="rs" style="flex:none;min-width:0">5cmずつ動かす</span>'
+        +'<button class="btn sm" data-a="nudge" data-dx="-1" data-dz="0" aria-label="左へ">←</button><button class="btn sm" data-a="nudge" data-dx="0" data-dz="-1" aria-label="奥へ">↑</button>'
+        +'<button class="btn sm" data-a="nudge" data-dx="0" data-dz="1" aria-label="手前へ">↓</button><button class="btn sm" data-a="nudge" data-dx="1" data-dz="0" aria-label="右へ">→</button></div>':'')+'</div>'
       +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
   }else{d.className='card'; d.innerHTML='';}
+  function stp(label,key,val,id){return '<label>'+label+'<span class="stp"><button type="button" data-a="step" data-k="'+key+'" data-d="-1" aria-label="'+label+'を減らす">−</button>'
+    +'<input type="text" inputmode="decimal"'+(id?' id="'+id+'"':'')+' data-sf="'+key+'" value="'+val+'"><button type="button" data-a="step" data-k="'+key+'" data-d="1" aria-label="'+label+'を増やす">＋</button></span></label>';}
   var o=(view==='2d'&&selO)?op(selO):null;
   if(o&&!it){
     rc.className='card on';
-    rc.innerHTML='<div class="body"><div class="rgrid"><label>種類<select data-of="kind"><option value="door"'+(o.kind==='door'?' selected':'')+'>ドア</option><option value="window"'+(o.kind==='window'?' selected':'')+'>窓</option></select></label>'
-      +'<label>幅 m<input type="text" inputmode="decimal" data-of="w" value="'+r2(o.w)+'"></label><span></span></div>'
-      +'<div class="scale"><span class="rs">壁に沿ってドラッグで動かせます</span><button class="btn sm danger" data-a="delop">削除</button></div></div>'
+    rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">種類<select data-of="kind"><option value="door"'+(o.kind==='door'?' selected':'')+'>ドア（開き戸）</option><option value="slide"'+(o.kind==='slide'?' selected':'')+'>引き戸</option><option value="window"'+(o.kind==='window'?' selected':'')+'>窓</option></select></label>'
+      +stp('幅 m','op.w',r2(o.w))+stp('位置 m','op.pos',r2(o.pos))+'</div>'
+      +'<div class="scale">'+(o.kind==='door'?'<button class="btn sm" data-a="flip" data-v="hinge">左右を反転</button><button class="btn sm" data-a="flip" data-v="out">内外を反転</button>':(o.kind==='slide'?'<button class="btn sm" data-a="flip" data-v="hinge">左右を反転</button>':''))
+      +'<span class="grow"></span><button class="btn sm danger" data-a="delop">削除</button></div></div>'
       +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
   }else if(r&&!it){
     rc.className='card on';
-    rc.innerHTML='<div class="body"><div class="rgrid"><label>部屋の名前<input type="text" id="r-name" data-rf="name" value="'+esc(r.name)+'"></label>'
-      +'<label>幅 m<input type="text" inputmode="decimal" id="r-w" data-rf="w" value="'+r2(r.w)+'"></label>'
-      +'<label>奥行 m<input type="text" inputmode="decimal" id="r-d" data-rf="d" value="'+r2(r.d)+'"></label></div>'
+    rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">部屋の名前<input type="text" id="r-name" data-rf="name" value="'+esc(r.name)+'"></label>'
+      +stp('幅 m','room.w',r2(r.w),'r-w')+stp('奥行 m','room.d',r2(r.d),'r-d')+'</div>'
       +'<div class="scale"><label>この部屋の実際の幅 m<input type="text" inputmode="decimal" id="r-real"></label><button class="btn sm" data-a="rescale">この階の縮尺を合わせる</button>'
       +'<span class="grow"></span><button class="btn sm danger" data-a="delroom">部屋を削除</button></div></div>'
       +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
@@ -832,7 +871,7 @@ var PLANPROMPT='これは住宅の間取り図の画像です。図の中の部�
  +'形式: {"rooms":[{"name":部屋名（図の表記に合わせる。例: LDK, 洋室, 和室, キッチン, 玄関, 浴室, 洗面, トイレ, 階段, 廊下, 収納, バルコニー）, '
  +'"floor":階（1 や 2 の数値。図に階の表記がなければ 1）, "jo":畳数（図にその部屋の帖・畳の数字が書かれている場合だけ数値。なければ null）, '
  +'"box_2d":[ymin,xmin,ymax,xmax]（その部屋を囲む長方形。画像全体を0〜1000とした座標）}], '
- +'"openings":[{"type":"door" か "window"（開き戸・引き戸・玄関ドアは door、窓・掃き出し窓は window）, "floor":階, "box_2d":[ymin,xmin,ymax,xmax]（そのドアや窓を囲む長方形）}]（図から読み取れるものだけ。なければ空の配列）, '
+ +'"openings":[{"type":"door"（開き戸・玄関ドア）か "slide"（引き戸）か "window"（窓・掃き出し窓）, "floor":階, "box_2d":[ymin,xmin,ymax,xmax]（そのドアや窓を囲む長方形）}]（図から読み取れるものだけ。なければ空の配列）, '
  +'"image_width_m":画像の横幅全体が実際の何メートルに当たるか（寸法の表記から分かる場合だけ数値。分からなければ null）}。'
  +'L字など長方形でない部屋は、重ならない長方形2つに分けて同じ名前で返す。部屋どうしの長方形は重ねない。図に書かれていない部屋を作らない。';
 var autoArm=0;
@@ -885,8 +924,8 @@ async function planAuto(){
       var b=o&&o.box_2d; if(!b||b.length!==4) return;
       var y0=num(b[0],0,1000), x0=num(b[1],0,1000), y1=num(b[2],0,1000), x1=num(b[3],0,1000); if(y0==null||x0==null||y1==null||x1==null) return;
       var fn=parseInt(o.floor,10)||1, f=same?S.floor:(fn===2?'f2':(fn===1?'f1':S.floor)); if(!targets[f]) return;
-      var len=Math.max((x1-x0)/1000*wm,(y1-y0)/1000*wm*asp), kind=(o.type==='window'?'window':'door');
-      if(addOp(f,(x0+x1)/2000*wm,(y0+y1)/2000*wm*asp,kind,Math.max(0.5,Math.min(kind==='door'?1.8:3.6,len)),0.6)) no++;
+      var len=Math.max((x1-x0)/1000*wm,(y1-y0)/1000*wm*asp), kind=(o.type==='window'||o.type==='slide')?o.type:'door';
+      if(addOp(f,(x0+x1)/2000*wm,(y0+y1)/2000*wm*asp,kind,Math.max(0.5,Math.min(kind==='window'?3.6:1.8,len)),0.6)) no++;
     });
     selI=selR=selO=null; fitNext=true; fitPlan(); refresh();
     st.textContent='部屋を'+n+'個'+(no?'、ドア・窓を'+no+'個':'')+'作りました'+(Object.keys(targets).length>1?'（1階と2階に振り分け）':'')+'。縮尺は'+how+'。AIの読み取りなので、ずれている所は「選ぶ・動かす」で直してください。';
@@ -1008,7 +1047,7 @@ async function syPull(always){
   syStat('読み込み中…');
   var o=JSON.parse(r.data); if(!o||!o.rooms||!o.items) throw new Error('クラウドのデータを読めません');
   var fl=S.floor; S=norm(o); if(S.floors.some(function(f){return f.id===fl;})) S.floor=fl;
-  lastStr=syncStr(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  lastStr=syncStr(); HIST=[]; undoUi(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
   SY.at=r.at; SY.dirty=false; sySave(); $('conf').classList.add('hide');
   selI=selR=selO=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); openForm(null); if(view==='2d') fitPlan(); refresh();
   var ks=Object.keys(S.imgv), i, k, g, got=false;
@@ -1062,6 +1101,17 @@ document.addEventListener('click',function(e){
   if(a==='tab') showTab(v);
   else if(a==='view') setView(v);
   else if(a==='floor'){S.floor=v; selI=selR=selO=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
+  else if(a==='undo') undo();
+  else if(a==='step'){
+    var dv=(+t.dataset.d)*0.05, k=t.dataset.k, so=op(selO), sr=room(selR);
+    if(k==='op.w'&&so) so.w=r2(Math.max(0.3,Math.min(20,so.w+dv)));
+    else if(k==='op.pos'&&so){var g0=opSeg(so), rr0=room(so.room), ln0=(g0&&g0.h)?rr0.w:rr0.d, w0=Math.min(so.w,ln0); so.pos=r2(Math.max(w0/2,Math.min(ln0-w0/2,Math.max(w0/2,Math.min(ln0-w0/2,so.pos))+dv)));}
+    else if(k==='room.w'&&sr) sr.w=r2(Math.max(0.3,sr.w+dv));
+    else if(k==='room.d'&&sr) sr.d=r2(Math.max(0.3,sr.d+dv));
+    refresh();
+  }
+  else if(a==='nudge'){it=item(selI); if(it){it.p=[r2(it.p[0]+(+t.dataset.dx)*0.05),r2(it.p[1]+(+t.dataset.dz)*0.05)]; var nr=roomAt(it.floor,it.p[0],it.p[1]); it.room=nr?nr.id:null; refresh();}}
+  else if(a==='flip'){var fo=op(selO); if(fo){if(v==='hinge') fo.hinge=(fo.hinge==='b'?'a':'b'); else fo.out=!fo.out; refresh();}}
   else if(a==='mode'){setMode(v); if(v==='door'||v==='window') $('pstat').textContent=(v==='door'?'ドア':'窓')+'を付けたい壁をタップしてください。'; else $('pstat').textContent='';}
   else if(a==='delop'){S.ops=S.ops.filter(function(o){return o.id!==selO;}); selO=null; refresh();}
   else if(a==='fit'){fitPlan(); drawPlan();}
@@ -1111,11 +1161,15 @@ document.addEventListener('change',function(e){
   var t=e.target, d=t.dataset, f, r;
   if(d.roomphoto){f=t.files&&t.files[0]; r=room(d.roomphoto); t.value=''; if(f&&r) roomFromPhoto(r,f);}
   else if(d.of){var oo=op(selO); if(!oo) return;
-    if(d.of==='kind') oo.kind=(t.value==='window'?'window':'door'); else {var ow=num(t.value,0.3,20); if(ow) oo.w=ow;}
+    oo.kind=(t.value==='window'||t.value==='slide')?t.value:'door'; refresh();}
+  else if(d.sf){var sv=num(t.value,0,50), so2=op(selO), sr2=room(selR);
+    if(sv!=null){
+      if(d.sf==='op.w'&&so2) so2.w=Math.max(0.3,sv); else if(d.sf==='op.pos'&&so2) so2.pos=sv;
+      else if(d.sf==='room.w'&&sr2) sr2.w=Math.max(0.3,sv); else if(d.sf==='room.d'&&sr2) sr2.d=Math.max(0.3,sv);
+    }
     refresh();}
   else if(d.rf){r=room(selR); if(!r) return;
-    if(d.rf==='name') r.name=t.value.trim()||r.name; else {var v=num(t.value,0.3,50); if(v) r[d.rf]=v;}
-    refresh();}
+    r.name=t.value.trim()||r.name; refresh();}
   else if(t.id==='planautofile'){f=t.files&&t.files[0]; t.value=''; if(f) toJpeg(f,1600).then(function(ph){imgPut('plan:'+S.floor,ph.url); autoArm=Date.now(); fitPlan(); refresh(); planAuto();}).catch(function(){$('pstat').textContent='画像を開けませんでした。';});}
   else if(t.id==='planfile'){f=t.files&&t.files[0]; t.value=''; if(f) toJpeg(f,1600).then(function(ph){imgPut('plan:'+S.floor,ph.url); fitPlan(); refresh();}).catch(function(){});}
   else if(t.id==='s-theme'){S.set.theme=t.value; applyTheme(); renderDeco(); redraw();}
