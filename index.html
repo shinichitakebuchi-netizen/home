@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v1.5.0
+/* 家の記録 v1.6.0
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -189,6 +189,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <button class="btn sm" data-a="mode" data-v="draw" aria-pressed="false">部屋を描く</button>
         <button class="btn sm" data-a="addroom">＋部屋</button>
         <button class="btn sm" data-a="mode" data-v="wall" aria-pressed="false">＋壁</button>
+        <button class="btn sm" data-a="mode" data-v="gap" aria-pressed="false">壁を消す</button>
         <button class="btn sm" data-a="mode" data-v="door" aria-pressed="false">＋ドア</button>
         <button class="btn sm" data-a="mode" data-v="slide" aria-pressed="false">＋引き戸</button>
         <button class="btn sm" data-a="mode" data-v="window" aria-pressed="false">＋窓</button>
@@ -302,7 +303,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v1.5.0</p>
+        <p class="lead sec">家の記録 v1.6.0</p>
       </div>
     </div>
   </section>
@@ -364,37 +365,46 @@ function floorItems(f){f=f||S.floor;return S.items.filter(function(i){return i.f
 function roomAt(f,x,z){var rs=floorRooms(f);for(var i=rs.length-1;i>=0;i--){var r=rs[i];if(x>=r.x&&x<=r.x+r.w&&z>=r.z&&z<=r.z+r.d)return r;}return null;}
 /* ドア・窓: 部屋の壁（n=奥 s=手前 w=左 e=右）に付く。pos=壁の端から中心までの距離 */
 function op(id){for(var i=0;i<S.ops.length;i++)if(S.ops[i].id===id)return S.ops[i];return null;}
-function floorOps(f){f=f||S.floor;return S.ops.filter(function(o){var r=room(o.room);return r&&r.floor===f;});}
-function opSeg(o){
-  var r=room(o.room); if(!r) return null;
-  var h=(o.side==='n'||o.side==='s'), len=h?r.w:r.d, w=Math.min(o.w,len), pos=Math.max(w/2,Math.min(len-w/2,o.pos)), st=h?r.x:r.z;
-  return {h:h,c:o.side==='n'?r.z:(o.side==='s'?r.z+r.d:(o.side==='w'?r.x:r.x+r.w)),a:st+pos-w/2,b:st+pos+w/2,kind:o.kind,side:o.side,id:o.id};
-}
-/* 自分で足した壁（間仕切り）と、部屋の壁を外した辺 */
+function r3(v){return Math.round(v*1000)/1000;}
 function fwall(id){for(var i=0;i<S.walls.length;i++)if(S.walls[i].id===id)return S.walls[i];return null;}
 function floorWalls(f){f=f||S.floor;return S.walls.filter(function(w){return w.floor===f;});}
+/* ドア・窓・開口が付いている壁（部屋の辺 か 自分で足した壁） */
+function host(o){
+  if(o.wall){var fw=fwall(o.wall); if(!fw) return null; var hz=Math.abs(fw.z2-fw.z1)<0.001;
+    return {h:hz,c:hz?fw.z1:fw.x1,st:hz?Math.min(fw.x1,fw.x2):Math.min(fw.z1,fw.z2),len:Math.abs(hz?fw.x2-fw.x1:fw.z2-fw.z1),dir:1,hh:fw.h||WH,floor:fw.floor};}
+  var r=room(o.room); if(!r) return null; var h=(o.side==='n'||o.side==='s');
+  return {h:h,c:o.side==='n'?r.z:(o.side==='s'?r.z+r.d:(o.side==='w'?r.x:r.x+r.w)),st:h?r.x:r.z,len:h?r.w:r.d,dir:(o.side==='n'||o.side==='w')?1:-1,hh:r.wh||WH,floor:r.floor};
+}
+function opSeg(o){
+  var H=host(o); if(!H) return null; var w=Math.min(o.w,H.len), pos=Math.max(w/2,Math.min(H.len-w/2,o.pos));
+  return {h:H.h,c:H.c,a:H.st+pos-w/2,b:H.st+pos+w/2,kind:o.kind,id:o.id,dir:H.dir,hh:H.hh};
+}
+function floorOps(f){f=f||S.floor;return S.ops.filter(function(o){var H=host(o);return H&&H.floor===f;});}
 function offSegs(f){
   var a=[]; floorRooms(f).forEach(function(r){var o=r.off||{};
     if(o.n) a.push({h:true,c:r.z,a:r.x,b:r.x+r.w,kind:'gap'}); if(o.s) a.push({h:true,c:r.z+r.d,a:r.x,b:r.x+r.w,kind:'gap'});
     if(o.w) a.push({h:false,c:r.x,a:r.z,b:r.z+r.d,kind:'gap'}); if(o.e) a.push({h:false,c:r.x+r.w,a:r.z,b:r.z+r.d,kind:'gap'});});
   return a;
 }
+/* いちばん近い壁（部屋の辺・足した壁）と、その上のいちばん近い点 */
 function nearWall(f,x,z,maxd){
   var best=null;
-  floorRooms(f).forEach(function(r){
-    [['n',true,r.z,r.x,r.x+r.w],['s',true,r.z+r.d,r.x,r.x+r.w],['w',false,r.x,r.z,r.z+r.d],['e',false,r.x+r.w,r.z,r.z+r.d]].forEach(function(q){
-      var al=q[1]?x:z, pr=q[1]?z:x, cl=Math.max(q[3],Math.min(q[4],al)), d=Math.hypot(al-cl,pr-q[2]);
-      if(d<=maxd&&(!best||d<best.d)) best={d:d,r:r,side:q[0],pos:cl-q[3],len:q[4]-q[3]};
-    });
-  });
+  function chk(h,c,a,b,extra){
+    var al=h?x:z, pr=h?z:x, cl=Math.max(a,Math.min(b,al)), d=Math.hypot(al-cl,pr-c);
+    if(d<=maxd&&(!best||d<best.d)){best={d:d,h:h,c:c,st:a,len:b-a,pos:cl-a,px:h?cl:c,pz:h?c:cl}; for(var k in extra) best[k]=extra[k];}
+  }
+  floorRooms(f).forEach(function(r){chk(true,r.z,r.x,r.x+r.w,{r:r,side:'n'}); chk(true,r.z+r.d,r.x,r.x+r.w,{r:r,side:'s'}); chk(false,r.x,r.z,r.z+r.d,{r:r,side:'w'}); chk(false,r.x+r.w,r.z,r.z+r.d,{r:r,side:'e'});});
+  floorWalls(f).forEach(function(fw){if(Math.abs(fw.z2-fw.z1)<0.001) chk(true,fw.z1,Math.min(fw.x1,fw.x2),Math.max(fw.x1,fw.x2),{fw:fw}); else chk(false,fw.x1,Math.min(fw.z1,fw.z2),Math.max(fw.z1,fw.z2),{fw:fw});});
   return best;
 }
 function wallLen(fw,len){len=r2(Math.max(0.3,Math.min(50,len))); if(Math.abs(fw.z2-fw.z1)<0.001) fw.x2=r2(fw.x1+len); else fw.z2=r2(fw.z1+len);}
-function addOp(f,x,z,kind,w,maxd){
-  var n=nearWall(f,x,z,maxd); if(!n) return null;
-  w=Math.max(0.4,Math.min(w,n.len));
-  var o={id:nid('o'),room:n.r.id,side:n.side,kind:kind,w:r2(w),pos:r2(Math.max(w/2,Math.min(n.len-w/2,n.pos)))}; S.ops.push(o); return o;
+function mkOp(n,kind,pos,w){
+  w=Math.max(0.2,Math.min(w,n.len));
+  var o={id:nid('o'),kind:kind,w:r3(w),pos:r3(Math.max(w/2,Math.min(n.len-w/2,pos)))};
+  if(n.fw) o.wall=n.fw.id; else{o.room=n.r.id; o.side=n.side;}
+  S.ops.push(o); return o;
 }
+function addOp(f,x,z,kind,w,maxd){var n=nearWall(f,x,z,maxd); return n?mkOp(n,kind,n.pos,Math.max(0.4,w)):null;}
 function fp(it){var k=Math.abs(Math.round((it.rot||0)/Q))%2;return k?[it.s[2],it.s[0]]:[it.s[0],it.s[2]];}
 function place(it){var r=it.room&&room(it.room);return (floorName(it.floor)||'')+(r?' '+r.name:' 部屋の外');}
 
@@ -509,14 +519,14 @@ function init3D(){
       x0=Math.min(x0,r.x); z0=Math.min(z0,r.z); x1=Math.max(x1,r.x+r.w); z1=Math.max(z1,r.z+r.d);
     });
     floorOps().forEach(function(o){
-      var g=opSeg(o); if(!g||o.kind==='window') return;
-      var dir=(o.side==='n'||o.side==='w')?1:-1, w=g.b-g.a, hb=o.hinge==='b', dh=(room(o.room).wh||WH);
+      var g=opSeg(o); if(!g||o.kind==='window'||o.kind==='gap') return;
+      var dir=g.dir, w=g.b-g.a, hb=o.hinge==='b', dh=g.hh;
       if(o.kind==='slide'){var m0=hb?g.b-w/4:g.a+w/4; if(g.h) box(w/2,dh,0.03,mDoor,m0,dh/2,g.c+dir*0.03); else box(0.03,dh,w/2,mDoor,g.c+dir*0.03,dh/2,m0);}
       else{var sw=o.out?-dir:dir, hp=hb?g.b:g.a; if(g.h) box(0.04,dh,w,mDoor,hp,dh/2,g.c+sw*w/2); else box(w,dh,0.04,mDoor,g.c+sw*w/2,dh/2,hp);}
     });
     floorWalls().forEach(function(fw){
       var hz=Math.abs(fw.z2-fw.z1)<0.001, len=hz?Math.abs(fw.x2-fw.x1):Math.abs(fw.z2-fw.z1), fh=fw.h||WH; if(len<0.01) return;
-      if(hz) box(len,fh,0.08,mFree,(fw.x1+fw.x2)/2,fh/2,fw.z1); else box(0.08,fh,len,mFree,fw.x1,fh/2,(fw.z1+fw.z2)/2);
+      if(hz) wallRun(true,fw.z1,fw.z1,Math.min(fw.x1,fw.x2),Math.max(fw.x1,fw.x2),mFree,segs,fh); else wallRun(false,fw.x1,fw.x1,Math.min(fw.z1,fw.z2),Math.max(fw.z1,fw.z2),mFree,segs,fh);
       x0=Math.min(x0,fw.x1,fw.x2); z0=Math.min(z0,fw.z1,fw.z2); x1=Math.max(x1,fw.x1,fw.x2); z1=Math.max(z1,fw.z1,fw.z2);
     });
     floorItems().forEach(function(it){addItem(it); x0=Math.min(x0,it.p[0]); z0=Math.min(z0,it.p[1]); x1=Math.max(x1,it.p[0]); z1=Math.max(z1,it.p[1]);});
@@ -631,6 +641,7 @@ function drawPlan(){
     x.strokeStyle=css('--bg'); x.lineWidth=6; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();
     x.strokeStyle=muted; x.lineWidth=1; x.setLineDash([3,5]); x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke(); x.setLineDash([]);
   });
+  function hdl(px,py){x.fillStyle=ac; x.fillRect(px-7,py-7,14,14); x.strokeStyle=css('--bg'); x.lineWidth=1.5; x.strokeRect(px-7,py-7,14,14);}
   floorWalls().forEach(function(fw){
     x.strokeStyle=fw.id===selW?ac:ink; x.lineWidth=5; x.beginPath(); x.moveTo(P.ox+fw.x1*P.s,P.oy+fw.z1*P.s); x.lineTo(P.ox+fw.x2*P.s,P.oy+fw.z2*P.s); x.stroke();
   });
@@ -639,22 +650,25 @@ function drawPlan(){
     var on=o.id===selO, ax=P.ox+(g.h?g.a:g.c)*P.s, ay=P.oy+(g.h?g.c:g.a)*P.s, bx=P.ox+(g.h?g.b:g.c)*P.s, by=P.oy+(g.h?g.c:g.b)*P.s;
     x.lineCap='butt'; x.strokeStyle=css('--bg'); x.lineWidth=7; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();
     if(o.kind==='window'){x.strokeStyle=on?ac:css('--blue'); x.lineWidth=4; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();}
+    else if(o.kind==='gap'){x.strokeStyle=on?ac:muted; x.lineWidth=on?2:1; x.setLineDash([3,5]); x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke(); x.setLineDash([]);}
     else{
-      var dir=(o.side==='n'||o.side==='w')?1:-1, hb=o.hinge==='b', hx=hb?bx:ax, hy=hb?by:ay, ex=hb?ax:bx, ey=hb?ay:by, L=Math.hypot(bx-ax,by-ay);
+      var dir=g.dir, hb=o.hinge==='b', hx=hb?bx:ax, hy=hb?by:ay, ex=hb?ax:bx, ey=hb?ay:by, L=Math.hypot(bx-ax,by-ay);
       x.strokeStyle=on?ac:ink; x.lineWidth=on?2.5:1.5; x.beginPath();
       if(o.kind==='slide'){
-        /* 引き戸: 壁の線上に半分、少し内側にもう半分 */
         var mx=(ax+bx)/2, my=(ay+by)/2, ox2=g.h?0:dir*4, oy2=g.h?dir*4:0;
         x.lineWidth=on?3.5:2.5; x.moveTo(hx,hy); x.lineTo(mx,my); x.moveTo(mx+ox2,my+oy2); x.lineTo(ex+ox2,ey+oy2);
       }else{
-        /* 開き戸: 蝶番の側から、開いた扉の線と開く範囲の弧を描く */
         var sw=o.out?-dir:dir, tx=g.h?hx:hx+sw*L, ty=g.h?hy+sw*L:hy;
         var a1=Math.atan2(ty-hy,tx-hx), a2=Math.atan2(ey-hy,ex-hx), df=a2-a1; while(df>Math.PI) df-=2*Math.PI; while(df<=-Math.PI) df+=2*Math.PI;
         x.moveTo(hx,hy); x.lineTo(tx,ty); x.moveTo(tx,ty); x.arc(hx,hy,L,a1,a2,df<0);
       }
       x.stroke();
     }
+    if(on){hdl(ax,ay); hdl(bx,by);}
   });
+  var sw0=selW&&fwall(selW); if(sw0&&sw0.floor===S.floor){hdl(P.ox+sw0.x1*P.s,P.oy+sw0.z1*P.s); hdl(P.ox+sw0.x2*P.s,P.oy+sw0.z2*P.s);}
+  if(G&&G.k==='gapdraw'){var gn=G.n, ga=gn.st+Math.min(G.a,G.b), gb=gn.st+Math.max(G.a,G.b); x.strokeStyle=ac; x.lineWidth=6; x.beginPath();
+    x.moveTo(P.ox+(gn.h?ga:gn.c)*P.s,P.oy+(gn.h?gn.c:ga)*P.s); x.lineTo(P.ox+(gn.h?gb:gn.c)*P.s,P.oy+(gn.h?gn.c:gb)*P.s); x.stroke();}
   floorItems().forEach(function(it){
     var f=fp(it), sx=P.ox+(it.p[0]-f[0]/2)*P.s, sy=P.oy+(it.p[1]-f[1]/2)*P.s, on=it.id===selI;
     x.fillStyle=it.color||css('--item'); x.globalAlpha=it.st==='missing'?0.4:0.95; x.fillRect(sx,sy,f[0]*P.s,f[1]*P.s); x.globalAlpha=1;
@@ -679,7 +693,26 @@ function initPlan(){
     if(PP.size===2){var t=two(); G={k:'pinch',d0:t.d,s0:P.s,wx:(t.cx-P.ox)/P.s,wz:(t.cy-P.oy)/P.s}; return;}
     var w=world(e);
     if(P.mode==='draw'){G={k:'draw',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
-    if(P.mode==='wall'){G={k:'wall',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
+    if(P.mode==='wall'){
+      /* 近くに壁があれば、その壁の上から引き始める（壁から伸ばす） */
+      var sn=nearWall(S.floor,w.x,w.z,Math.max(0.4,24/P.s)), sx0=sn?(sn.h?snap(sn.px):sn.px):snap(w.x), sz0=sn?(sn.h?sn.pz:snap(sn.pz)):snap(w.z);
+      G={k:'wall',x0:sx0,z0:sz0,x1:sx0,z1:sz0}; return;
+    }
+    if(P.mode==='gap'){
+      var gn0=nearWall(S.floor,w.x,w.z,Math.max(0.5,28/P.s));
+      if(gn0) G={k:'gapdraw',n:gn0,a:snap(gn0.pos),b:snap(gn0.pos)}; else{$('pstat').textContent='消したい壁の上を、消す範囲だけなぞってください。'; G={k:'none'};}
+      return;
+    }
+    var eo=selO&&op(selO), eg=eo&&opSeg(eo), d1, d2;
+    if(eg){
+      d1=Math.hypot(w.sx-(P.ox+(eg.h?eg.a:eg.c)*P.s),w.sy-(P.oy+(eg.h?eg.c:eg.a)*P.s)); d2=Math.hypot(w.sx-(P.ox+(eg.h?eg.b:eg.c)*P.s),w.sy-(P.oy+(eg.h?eg.c:eg.b)*P.s));
+      if(Math.min(d1,d2)<18){G={k:'opend',o:eo,end:d1<=d2?'a':'b'}; return;}
+    }
+    var ew=selW&&fwall(selW);
+    if(ew&&ew.floor===S.floor){
+      d1=Math.hypot(w.sx-(P.ox+ew.x1*P.s),w.sy-(P.oy+ew.z1*P.s)); d2=Math.hypot(w.sx-(P.ox+ew.x2*P.s),w.sy-(P.oy+ew.z2*P.s));
+      if(Math.min(d1,d2)<18){G={k:'wend',w:ew,end:d1<=d2?1:2}; return;}
+    }
     if(P.mode==='door'||P.mode==='slide'||P.mode==='window'){
       var no=addOp(S.floor,w.x,w.z,P.mode,P.mode==='window'?1.2:0.8,Math.max(0.5,28/P.s));
       if(no){selO=no.id; selI=selR=selW=null; setMode('select'); G={k:'op',o:no}; $('pstat').textContent=''; refresh();}
@@ -710,7 +743,17 @@ function initPlan(){
     else if(G.k==='resize'){G.r.w=Math.max(0.5,snap(w.x-G.r.x)); G.r.d=Math.max(0.5,snap(w.z-G.r.z)); G.ch=true; if($('r-w')){$('r-w').value=r2(G.r.w); $('r-d').value=r2(G.r.d);}}
     else if(G.k==='wall'){var wx=snap(w.x), wz=snap(w.z); if(Math.abs(wx-G.x0)>=Math.abs(wz-G.z0)){G.x1=wx; G.z1=G.z0;} else {G.x1=G.x0; G.z1=wz;}}
     else if(G.k==='fwall'){var fdx=snap(w.x-G.px), fdz=snap(w.z-G.pz); if(fdx||fdz){G.w.x1=r2(G.w.x1+fdx); G.w.x2=r2(G.w.x2+fdx); G.w.z1=r2(G.w.z1+fdz); G.w.z2=r2(G.w.z2+fdz); G.px+=fdx; G.pz+=fdz; G.ch=true;}}
-    else if(G.k==='op'){var orr=room(G.o.room); if(orr){var hz=(G.o.side==='n'||G.o.side==='s'), ln=hz?orr.w:orr.d, ww=Math.min(G.o.w,ln); G.o.pos=Math.max(ww/2,Math.min(ln-ww/2,snap((hz?w.x-orr.x:w.z-orr.z)))); G.ch=true;}}
+    else if(G.k==='op'){var Ho=host(G.o); if(Ho){var ww=Math.min(G.o.w,Ho.len); G.o.pos=r3(Math.max(ww/2,Math.min(Ho.len-ww/2,snap((Ho.h?w.x:w.z)-Ho.st)))); G.ch=true;}}
+    else if(G.k==='gapdraw'){G.b=Math.max(0,Math.min(G.n.len,snap((G.n.h?w.x:w.z)-G.n.st)));}
+    else if(G.k==='opend'){var He=host(G.o); if(He){
+      var we=Math.min(G.o.w,He.len), pe=Math.max(we/2,Math.min(He.len-we/2,G.o.pos)), A=pe-we/2, B=pe+we/2, ve=Math.max(0,Math.min(He.len,snap((He.h?w.x:w.z)-He.st)));
+      if(G.end==='a') A=Math.min(ve,B-0.2); else B=Math.max(ve,A+0.2);
+      G.o.w=r3(B-A); G.o.pos=r3((A+B)/2); G.ch=true;}}
+    else if(G.k==='wend'){
+      var fwe=G.w, hze=Math.abs(fwe.z2-fwe.z1)<0.001, vw=snap(hze?w.x:w.z), k1=hze?'x1':'z1', k2=hze?'x2':'z2', old=fwe[k1];
+      if(G.end===1){fwe[k1]=r2(Math.min(vw,fwe[k2]-0.2)); var sh=fwe[k1]-old; if(sh) S.ops.forEach(function(o){if(o.wall===fwe.id) o.pos=r3(o.pos-sh);});}
+      else fwe[k2]=r2(Math.max(vw,fwe[k1]+0.2));
+      G.ch=true;}
     else if(G.k==='item'){G.it.p=[snap(w.x-G.dx),snap(w.z-G.dz)]; G.ch=true;}
     else if(G.k==='room'){var nx=snap(w.x-G.dx), nz=snap(w.z-G.dz), ddx=nx-G.r.x, ddz=nz-G.r.z;
       if(ddx||ddz){S.items.forEach(function(it){if(it.room===G.r.id){it.p=[r2(it.p[0]+ddx),r2(it.p[1]+ddz)];}}); G.r.x=nx; G.r.z=nz; G.ch=true;}}
@@ -726,7 +769,13 @@ function initPlan(){
       if(w>=0.4&&d>=0.4){var r={id:nid('r'),floor:S.floor,name:'部屋'+(floorRooms().length+1),x:x,z:z,w:w,d:d,wall:null,fl:null,light:null,lux:50}; S.rooms.push(r); selR=r.id; selI=null; selO=null; selW=null; setMode('select');}
       refresh(); return;
     }
+    if(g.k==='gapdraw'){
+      var ga=Math.min(g.a,g.b), gb=Math.max(g.a,g.b), ng=(gb-ga<0.2)?mkOp(g.n,'gap',g.a,0.9):mkOp(g.n,'gap',(ga+gb)/2,gb-ga);
+      selO=ng.id; selI=selR=selW=null; setMode('select'); $('pstat').textContent=''; refresh(); return;
+    }
     if(g.k==='wall'){
+      /* 引き終わりの近くに壁があれば、そこまでぴったり伸ばす */
+      var en=nearWall(S.floor,g.x1,g.z1,0.25); if(en){if(g.z1===g.z0&&!en.h) g.x1=en.c; else if(g.x1===g.x0&&en.h) g.z1=en.c;}
       if(Math.hypot(g.x1-g.x0,g.z1-g.z0)>=0.3){var nw={id:nid('w'),floor:S.floor,x1:Math.min(g.x0,g.x1),z1:Math.min(g.z0,g.z1),x2:Math.max(g.x0,g.x1),z2:Math.max(g.z0,g.z1),h:WH}; S.walls.push(nw); selW=nw.id; selI=selR=null; selO=null; setMode('select'); $('pstat').textContent='';}
       refresh(); return;
     }
@@ -819,11 +868,11 @@ function renderCards(){
   if(fw&&!it){
     rc.className='card on';
     rc.innerHTML='<div class="body"><div class="rgrid">'+stp('長さ m','wall.len',r2(Math.abs(fw.x2-fw.x1)+Math.abs(fw.z2-fw.z1)))+stp('高さ m','wall.h',r2(fw.h||WH))+'</div>'
-      +'<div class="scale"><span class="rs">ドラッグで動かせます</span><button class="btn sm danger" data-a="delwall">壁を削除</button></div></div>'
+      +'<div class="scale"><span class="rs">真ん中をドラッグで移動、両端の■で長さを調整</span><button class="btn sm danger" data-a="delwall">壁を削除</button></div></div>'
       +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
   }else if(o&&!it){
     rc.className='card on';
-    rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">種類<select data-of="kind"><option value="door"'+(o.kind==='door'?' selected':'')+'>ドア（開き戸）</option><option value="slide"'+(o.kind==='slide'?' selected':'')+'>引き戸</option><option value="window"'+(o.kind==='window'?' selected':'')+'>窓</option></select></label>'
+    rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">種類<select data-of="kind"><option value="door"'+(o.kind==='door'?' selected':'')+'>ドア（開き戸）</option><option value="slide"'+(o.kind==='slide'?' selected':'')+'>引き戸</option><option value="window"'+(o.kind==='window'?' selected':'')+'>窓</option><option value="gap"'+(o.kind==='gap'?' selected':'')+'>壁なし（開口）</option></select></label>'
       +stp('幅 m','op.w',r2(o.w))+stp('位置 m','op.pos',r2(o.pos))+'</div>'
       +'<div class="scale">'+(o.kind==='door'?'<button class="btn sm" data-a="flip" data-v="hinge">左右を反転</button><button class="btn sm" data-a="flip" data-v="out">内外を反転</button>':(o.kind==='slide'?'<button class="btn sm" data-a="flip" data-v="hinge">左右を反転</button>':''))
       +'<span class="grow"></span><button class="btn sm danger" data-a="delop">削除</button></div></div>'
@@ -954,7 +1003,7 @@ async function planAuto(){
     var same=rs.every(function(q){return q.fn===rs[0].fn;}), targets={};
     rs.forEach(function(q){q.f=same?S.floor:(q.fn===2?'f2':(q.fn===1?'f1':S.floor)); targets[q.f]=1;});
     Object.keys(targets).forEach(function(f){
-      S.ops=S.ops.filter(function(o){var rr=room(o.room); return rr&&rr.floor!==f;});
+      S.ops=S.ops.filter(function(o){return o.wall||(room(o.room)&&room(o.room).floor!==f);});
       S.rooms=S.rooms.filter(function(x){return x.floor!==f;});
       if(!S.plans[f]) S.plans[f]={}; S.plans[f].wm=wm; if(f!==S.floor) imgPut('plan:'+f,src); P.fit[f]=false;
     });
@@ -1149,11 +1198,11 @@ document.addEventListener('click',function(e){
   else if(a==='floor'){S.floor=v; selI=selR=selO=selW=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
   else if(a==='undo') undo();
   else if(a==='side'){r=room(selR); if(r){r.off=r.off||{}; r.off[v]=!r.off[v]; refresh();}}
-  else if(a==='delwall'){S.walls=S.walls.filter(function(x){return x.id!==selW;}); selW=null; refresh();}
+  else if(a==='delwall'){S.walls=S.walls.filter(function(x){return x.id!==selW;}); S.ops=S.ops.filter(function(o){return o.wall!==selW;}); selW=null; refresh();}
   else if(a==='step'){
     var dv=(+t.dataset.d)*0.05, k=t.dataset.k, so=op(selO), sr=room(selR);
     if(k==='op.w'&&so) so.w=r2(Math.max(0.3,Math.min(20,so.w+dv)));
-    else if(k==='op.pos'&&so){var g0=opSeg(so), rr0=room(so.room), ln0=(g0&&g0.h)?rr0.w:rr0.d, w0=Math.min(so.w,ln0); so.pos=r2(Math.max(w0/2,Math.min(ln0-w0/2,Math.max(w0/2,Math.min(ln0-w0/2,so.pos))+dv)));}
+    else if(k==='op.pos'&&so){var H0=host(so); if(H0){var w0=Math.min(so.w,H0.len); so.pos=r3(Math.max(w0/2,Math.min(H0.len-w0/2,Math.max(w0/2,Math.min(H0.len-w0/2,so.pos))+dv)));}}
     else if(k==='room.h'&&sr) sr.wh=r2(Math.max(0.1,Math.min(3,(sr.wh||WH)+dv)));
     else if(k==='wall.h'&&fwall(selW)) fwall(selW).h=r2(Math.max(0.1,Math.min(3,(fwall(selW).h||WH)+dv)));
     else if(k==='wall.len'&&fwall(selW)) wallLen(fwall(selW),Math.abs(fwall(selW).x2-fwall(selW).x1)+Math.abs(fwall(selW).z2-fwall(selW).z1)+dv);
@@ -1163,7 +1212,7 @@ document.addEventListener('click',function(e){
   }
   else if(a==='nudge'){it=item(selI); if(it){it.p=[r2(it.p[0]+(+t.dataset.dx)*0.05),r2(it.p[1]+(+t.dataset.dz)*0.05)]; var nr=roomAt(it.floor,it.p[0],it.p[1]); it.room=nr?nr.id:null; refresh();}}
   else if(a==='flip'){var fo=op(selO); if(fo){if(v==='hinge') fo.hinge=(fo.hinge==='b'?'a':'b'); else fo.out=!fo.out; refresh();}}
-  else if(a==='mode'){setMode(v); if(v==='door'||v==='slide'||v==='window') $('pstat').textContent=({door:'ドア',slide:'引き戸',window:'窓'})[v]+'を付けたい壁をタップしてください。'; else if(v==='wall') $('pstat').textContent='壁を立てたい所を、端から端までなぞってください（縦か横にまっすぐ引けます）。'; else $('pstat').textContent='';}
+  else if(a==='mode'){setMode(v); if(v==='door'||v==='slide'||v==='window') $('pstat').textContent=({door:'ドア',slide:'引き戸',window:'窓'})[v]+'を付けたい壁をタップしてください。'; else if(v==='wall') $('pstat').textContent='今ある壁の上から指を置いて、伸ばしたい方向へなぞってください（縦か横にまっすぐ伸びます）。'; else if(v==='gap') $('pstat').textContent='消したい壁の上を、消す範囲だけなぞってください。'; else $('pstat').textContent='';}
   else if(a==='delop'){S.ops=S.ops.filter(function(o){return o.id!==selO;}); selO=null; selW=null; refresh();}
   else if(a==='fit'){fitPlan(); drawPlan();}
   else if(a==='addroom'){
@@ -1213,7 +1262,7 @@ document.addEventListener('change',function(e){
   var t=e.target, d=t.dataset, f, r;
   if(d.roomphoto){f=t.files&&t.files[0]; r=room(d.roomphoto); t.value=''; if(f&&r) roomFromPhoto(r,f);}
   else if(d.of){var oo=op(selO); if(!oo) return;
-    oo.kind=(t.value==='window'||t.value==='slide')?t.value:'door'; refresh();}
+    oo.kind=(t.value==='window'||t.value==='slide'||t.value==='gap')?t.value:'door'; refresh();}
   else if(d.sf){var sv=num(t.value,0,50), so2=op(selO), sr2=room(selR);
     if(sv!=null){
       if(d.sf==='op.w'&&so2) so2.w=Math.max(0.3,sv); else if(d.sf==='op.pos'&&so2) so2.pos=sv;
