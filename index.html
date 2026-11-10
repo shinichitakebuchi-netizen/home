@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v2.0.0
+/* 家の記録 v2.0.1
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -164,6 +164,15 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
   .tbar>*{flex:none}
 }
 .rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
+.pad{position:absolute;right:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,46px);grid-auto-rows:46px;gap:4px;touch-action:none;user-select:none;-webkit-user-select:none}
+.pad button{border:1px solid var(--line);background:var(--surface);border-radius:8px;font-size:18px;opacity:.9;touch-action:none}
+.deco .lux2{grid-column:2/-1}
+@media (max-width:819px){
+  body.ed main{grid-template-rows:minmax(300px,64%) minmax(0,1fr)}
+  .tbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .tbar>*{flex:none}
+}
+.rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -209,6 +218,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
     </div>
     <div class="pstat hide" id="pstat" role="status"></div>
     <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
+    <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
     <div class="card" id="rcard"></div>
     <div class="card" id="detail"></div>
   </section>
@@ -238,6 +248,11 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <div class="pickrow">
           <label class="filebtn"><input type="file" accept="image/*" id="f-file"><span class="btn pri">写真を選ぶ</span></label>
           <span class="rs">写真から種類・サイズ・色を読み取ります</span>
+        </div>
+        <div class="pickrow">
+          <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
+          <button class="btn sm hide" type="button" id="f-glboff" data-a="glboff">3Dモデルを外す</button>
+          <span class="rs" id="f-glbstat" role="status"></span>
         </div>
         <div class="pickrow">
           <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
@@ -317,13 +332,20 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <span class="rs" id="s-mi" role="status"></span>
         </div>
 
+        <h3>モデルデータの取り込み</h3>
+        <p class="lead">Claudeのチャットで間取り図や写真から作ってもらったモデルデータ（.json）を取り込みます。ファイルに入っている階の間取りが置き換わります。合わなければ「戻す」で戻せます。</p>
+        <div class="pickrow">
+          <label class="filebtn"><input type="file" accept="application/json,.json" id="s-mimport"><span class="btn">モデルデータを取り込む</span></label>
+          <span class="rs" id="s-mi" role="status"></span>
+        </div>
+
         <h3>その他</h3>
         <div class="pickrow">
           <button class="btn" data-a="sample">サンプルの家を入れる</button>
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v2.0.0</p>
+        <p class="lead sec">家の記録 v2.0.1</p>
       </div>
     </div>
   </section>
@@ -403,7 +425,12 @@ function polyInner(p){
 var GEO={};
 function arrange(f){
   var ws=floorWalls(f), nodes={}, edges={}, splits={};
-  function key(x,z){return Math.round(x*50)+','+Math.round(z*50);}
+  /* 同じ点かどうかは「近さ」で決める（座標を丸めて比べると、丸めの境目で同じ点が別の点になることがある） */
+  var nlist=[];
+  function nodeAt(x,z){
+    for(var i=0;i<nlist.length;i++) if(Math.abs(nlist[i].x-x)<0.015&&Math.abs(nlist[i].z-z)<0.015) return nlist[i];
+    var n={x:x,z:z,k:'n'+nlist.length,out:[]}; nlist.push(n); nodes[n.k]=n; return n;
+  }
   ws.forEach(function(w){
     var L=wlen(w); if(L<0.01){splits[w.id]=[0,L];return;}
     var ts=[];
@@ -416,8 +443,7 @@ function arrange(f){
     var sp=[0],tol=0.03/L; ts.forEach(function(t){if(t>tol&&t<1-tol&&t-sp[sp.length-1]>tol) sp.push(t);}); sp.push(1);
     splits[w.id]=sp.map(function(t){return t*L;});
     for(var i=0;i<sp.length-1;i++){
-      var A=wpt(w,sp[i]*L),B=wpt(w,sp[i+1]*L),ka=key(A.x,A.z),kb=key(B.x,B.z); if(ka===kb) continue;
-      if(!nodes[ka]) nodes[ka]={x:A.x,z:A.z,k:ka,out:[]}; if(!nodes[kb]) nodes[kb]={x:B.x,z:B.z,k:kb,out:[]};
+      var A=wpt(w,sp[i]*L),B=wpt(w,sp[i+1]*L),ka=nodeAt(A.x,A.z).k,kb=nodeAt(B.x,B.z).k; if(ka===kb) continue;
       var ek=ka<kb?ka+'|'+kb:kb+'|'+ka; if(!edges[ek]) edges[ek]=[ka,kb];
     }
   });
