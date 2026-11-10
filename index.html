@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="家の記録">
+<title>家の記録</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* 家の記録 v1.1.0
+   配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
+:root{
+  --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
+  --accent:#DD6426; --accent-ink:#FFFFFF; --blue:#165E83;
+  --ok:#3F7A52; --warn:#B4453A;
+  --floor:#E7E4DC; --floor2:#DEDAD0; --wall:#FBFAF7; --item:#CBC4B5; --edge:#313131;
+  --display:"Kaisei Tokumin","Hiragino Mincho ProN","Yu Mincho",serif;
+  --body:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#313131; --surface:#3C3C3B; --ink:#F3F3F2; --muted:#ABABA6; --line:#525250;
+    --accent:#F08A4B; --accent-ink:#2A211B; --blue:#7DB4D2;
+    --ok:#8FC49C; --warn:#EC9085;
+    --floor:#464644; --floor2:#4E4E4B; --wall:#62625F; --item:#827D73; --edge:#F3F3F2;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#313131; --surface:#3C3C3B; --ink:#F3F3F2; --muted:#ABABA6; --line:#525250;
+  --accent:#F08A4B; --accent-ink:#2A211B; --blue:#7DB4D2;
+  --ok:#8FC49C; --warn:#EC9085;
+  --floor:#464644; --floor2:#4E4E4B; --wall:#62625F; --item:#827D73; --edge:#F3F3F2;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;display:flex;flex-direction:column;overflow:hidden;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.hide{display:none !important}
+
+header{display:flex;align-items:baseline;gap:12px;padding:10px 16px 8px;border-bottom:1px solid var(--line)}
+h1{font-family:var(--display);font-weight:700;font-size:20px;margin:0;letter-spacing:.06em}
+header .sum{margin-left:auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+header .saved{font-size:11px;color:var(--muted);white-space:nowrap}
+
+main{flex:1;min-height:0;display:grid;grid-template-rows:minmax(230px,46%) minmax(0,1fr)}
+@media (min-width:820px){main{grid-template-rows:none;grid-template-columns:minmax(0,1.3fr) minmax(350px,1fr)}}
+
+.stage{position:relative;min-height:0;min-width:0;border-bottom:1px solid var(--line);background:var(--bg);overflow:hidden}
+@media (min-width:820px){.stage{border-bottom:0;border-right:1px solid var(--line)}}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.top{position:absolute;left:10px;right:10px;top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
+.top>*{pointer-events:auto}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:4px 11px;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.grow{flex:1}
+.tbar{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
+.tbar label{display:inline-block}
+.filebtn input{position:absolute;width:1px;height:1px;opacity:0}
+.filebtn input:focus-visible + span{outline:2px solid var(--blue);outline-offset:2px}
+.msg{position:absolute;inset:0;display:none;flex-direction:column;gap:10px;align-items:center;justify-content:center;padding:70px 24px 24px;text-align:center;color:var(--muted);pointer-events:none}
+.msg>*{pointer-events:auto;max-width:30em}
+
+.card{position:absolute;left:10px;right:10px;bottom:10px;max-width:440px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:6px;padding:10px 12px;display:none;gap:10px;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.card.on{display:flex}
+.card img{width:56px;height:56px;object-fit:cover;border-radius:4px;flex:none}
+.card .body{flex:1;min-width:0}
+.card h2{font-family:var(--display);font-size:16px;margin:0 0 2px;overflow-wrap:anywhere}
+.card dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:0 10px;font-size:12px}
+.card dt{color:var(--muted)}
+.card dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
+.x{flex:none;align-self:flex-start;border:0;background:none;font-size:20px;line-height:1;padding:2px 6px;color:var(--muted)}
+.rgrid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px}
+.rgrid label,.scale label{display:flex;flex-direction:column;font-size:11px;color:var(--muted);gap:2px}
+.scale{display:flex;gap:6px;align-items:flex-end;margin-top:8px;flex-wrap:wrap}
+.scale label{width:8em}
+
+.panel{display:flex;flex-direction:column;min-height:0;min-width:0}
+.tabs{display:flex;border-bottom:1px solid var(--line);padding:0 6px}
+.tabs button{flex:1;border:0;background:none;padding:10px 2px 8px;font-size:14px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.pane{flex:1;min-height:0;overflow-y:auto;padding:12px 16px 28px;display:none}
+.pane.on{display:block}
+
+.tools{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.tools .r{display:flex;gap:8px}
+input[type=search],input[type=text],input[type=password],select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px}
+textarea{min-height:60px;resize:vertical}
+input[type=color]{width:100%;height:36px;padding:2px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.chip{flex:none;border:1px solid var(--line);background:none;border-radius:999px;padding:3px 12px;font-size:13px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+ul.rows{list-style:none;margin:0;padding:0}
+.row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+.row .main{flex:1;min-width:0;text-align:left;border:0;background:none;padding:0}
+.row .nm{display:block;font-weight:600;overflow-wrap:anywhere}
+.row .sub{display:block;font-size:12px;color:var(--muted);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.row.sel .nm{color:var(--accent)}
+.pill{flex:none;font-size:11px;border-radius:999px;padding:1px 8px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.pill.missing{color:var(--warn);border-color:var(--warn)}
+.empty{color:var(--muted);padding:14px 0}
+
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 12px;font-size:13px;white-space:nowrap}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.sm{padding:3px 9px;font-size:12px}
+.btn.danger{color:var(--warn);border-color:var(--warn)}
+.btn[aria-pressed="true"]{border-color:var(--ink);font-weight:600;background:var(--ink);color:var(--bg)}
+
+.prog{margin-bottom:14px}
+.prog .nums{display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.prog .big{font-family:var(--display);font-size:26px;font-weight:700}
+.prog .rest{font-size:12px;color:var(--muted)}
+.prog .reset{margin-left:auto}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--ok)}
+h3{font-family:var(--display);font-size:14px;margin:18px 0 0;display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--ink);padding-bottom:3px}
+h3 span{font-family:var(--body);font-size:12px;color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
+h3:first-child{margin-top:0}
+
+.lead{margin:0 0 10px;color:var(--muted);font-size:13px;max-width:38em}
+.note{font-size:12px;color:var(--muted);border-left:3px solid var(--blue);padding:4px 10px;margin:0}
+.note:empty{display:none}
+form.f,.f{display:flex;flex-direction:column;gap:10px}
+.f label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.f .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.f .grid.g4{grid-template-columns:repeat(4,1fr)}
+.f .topr{display:flex;gap:12px;align-items:flex-start}
+#prev{width:92px;height:92px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:none;background:var(--floor)}
+.pickrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.deco{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px;margin:8px 0}
+.deco label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.deco .lux{grid-column:1/-1}
+.rs{font-size:12px;color:var(--muted);flex:1;min-width:10em}
+.sec{margin-top:8px}
+.conf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);border-left:3px solid var(--warn);font-size:13px}
+.stat{font-size:12px;color:var(--muted);min-height:1.4em}
+</style>
+</head>
+<body>
+<header>
+  <h1>家の記録</h1>
+  <span class="saved" id="saved"></span>
+  <span class="sum" id="sum"></span>
+</header>
+
+<div class="conf hide" id="conf" role="alert"><span>別の端末で先に更新されています。どちらを残しますか？</span>
+  <button class="btn sm" data-a="syuse">クラウドの内容を読み込む</button><button class="btn sm" data-a="syforce">この端末の内容で上書き</button></div>
+
+<main>
+  <section class="stage" aria-label="間取り">
+    <canvas id="view"></canvas>
+    <canvas id="plan" class="hide"></canvas>
+    <div class="msg" id="empty">
+      <div>この階にはまだ部屋がありません。<br>「間取り」で部屋を追加するか、間取り図の画像をなぞって作ります。</div>
+      <button class="btn pri" data-a="view" data-v="2d">間取りを作る</button>
+    </div>
+    <div class="msg" id="no3d"><div>この端末では3D表示を読み込めませんでした。「間取り」とリストは使えます。</div></div>
+    <div class="top">
+      <div class="seg" id="viewseg">
+        <button data-a="view" data-v="3d" aria-pressed="true">3D</button>
+        <button data-a="view" data-v="2d" aria-pressed="false">間取り</button>
+      </div>
+      <span class="grow"></span>
+      <div class="seg" id="floorseg"></div>
+      <div class="tbar hide" id="tbar">
+        <button class="btn sm" data-a="mode" data-v="select" aria-pressed="true">選ぶ・動かす</button>
+        <button class="btn sm" data-a="mode" data-v="draw" aria-pressed="false">部屋を描く</button>
+        <button class="btn sm" data-a="addroom">＋部屋</button>
+        <label class="filebtn"><input type="file" accept="image/*" id="planfile"><span class="btn sm">間取り図を敷く</span></label>
+        <button class="btn sm hide" data-a="planoff" id="planoff">図を外す</button>
+        <button class="btn sm" data-a="fit">全体</button>
+      </div>
+    </div>
+    <div class="card" id="rcard"></div>
+    <div class="card" id="detail"></div>
+  </section>
+
+  <section class="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="t-items" aria-selected="true" data-a="tab" data-v="items">持ち物</button>
+      <button role="tab" id="t-inv" aria-selected="false" data-a="tab" data-v="inv">棚卸し</button>
+      <button role="tab" id="t-form" aria-selected="false" data-a="tab" data-v="form">登録</button>
+      <button role="tab" id="t-deco" aria-selected="false" data-a="tab" data-v="deco">内装</button>
+      <button role="tab" id="t-set" aria-selected="false" data-a="tab" data-v="set">設定</button>
+    </div>
+
+    <div class="pane on" id="p-items" role="tabpanel" aria-labelledby="t-items">
+      <div class="tools">
+        <div class="r"><input type="search" id="q" placeholder="名前・メーカー・型番でさがす" aria-label="持ち物をさがす"><button class="btn pri" data-a="new">＋登録</button></div>
+        <div class="chips" id="chips"></div>
+      </div>
+      <ul class="rows" id="list"></ul>
+    </div>
+
+    <div class="pane" id="p-inv" role="tabpanel" aria-labelledby="t-inv"><div id="inv"></div></div>
+
+    <div class="pane" id="p-form" role="tabpanel" aria-labelledby="t-form">
+      <form class="f" id="form">
+        <h3 id="f-title">新しく登録</h3>
+        <div class="pickrow">
+          <label class="filebtn"><input type="file" accept="image/*" id="f-file"><span class="btn pri">写真を選ぶ</span></label>
+          <span class="rs">写真から種類・サイズ・色を読み取ります</span>
+        </div>
+        <p class="note" id="f-note" role="status"></p>
+        <div class="topr">
+          <img id="prev" alt="この物の写真">
+          <label style="flex:1">名前<input type="text" id="f-name" required></label>
+        </div>
+        <div class="grid">
+          <label>メーカー<input type="text" id="f-maker"></label>
+          <label>型番<input type="text" id="f-model"></label>
+          <label>種類（形）<select id="f-type"></select></label>
+          <label>置き場所<select id="f-room"></select></label>
+        </div>
+        <div class="grid g4">
+          <label>幅 cm<input type="text" inputmode="decimal" id="f-w"></label>
+          <label>高さ cm<input type="text" inputmode="decimal" id="f-h"></label>
+          <label>奥行 cm<input type="text" inputmode="decimal" id="f-d"></label>
+          <label>床から cm<input type="text" inputmode="decimal" id="f-y"></label>
+        </div>
+        <div class="grid">
+          <label>本体の色<input type="color" id="f-color" value="#cbc4b5"></label>
+          <label>購入時期<input type="text" id="f-bought" placeholder="2026/11"></label>
+          <label>保証期限<input type="text" id="f-warranty" placeholder="2029/11"></label>
+          <label>メモ<input type="text" id="f-memo"></label>
+        </div>
+        <div class="pickrow">
+          <button class="btn pri" type="submit">保存する</button>
+          <button class="btn" type="button" data-a="new">入力を空にする</button>
+          <span class="grow"></span>
+          <button class="btn danger hide" type="button" id="f-del" data-a="delitem">この物を削除</button>
+        </div>
+        <div class="stat" id="f-stat" role="status"></div>
+      </form>
+    </div>
+
+    <div class="pane" id="p-deco" role="tabpanel" aria-labelledby="t-deco"><div id="deco"></div></div>
+
+    <div class="pane" id="p-set" role="tabpanel" aria-labelledby="t-set">
+      <div class="f">
+        <h3>表示</h3>
+        <label>テーマ<select id="s-theme"><option value="auto">移ろい（端末に合わせる）</option><option value="light">白練（ライト）</option><option value="dark">墨（ダーク）</option></select></label>
+
+        <h3>写真のAI読み取り（Gemini）</h3>
+        <p class="lead">APIキーを入れると、写真から種類・サイズ・色・型番の文字を読み取ります。混んでいるときは別の無料枠モデルに自動で切り替えます。空のままでも手入力で使えます。Geminiの無料枠では、送った写真がGoogleのサービス改善に使われることがあります。</p>
+        <label>Gemini APIキー<input type="password" id="s-key" autocomplete="off"></label>
+        <label>モデル名<input type="text" id="s-model" list="models"></label>
+        <datalist id="models"></datalist>
+        <div class="pickrow"><button class="btn" data-a="aitest">接続を確かめる</button><span class="rs" id="s-ai" role="status"></span></div>
+
+        <h3>端末間の同期（Googleドライブ）</h3>
+        <p class="lead">同期用のGASを自分のGoogleアカウントに置くと、データと写真がドライブの「家の記録_同期」フォルダに保存され、iPadとスマホで同じ内容になります。変更は数秒後に自動で保存、アプリを開いたときに最新を読み込みます。APIキーも一緒に同期されます。</p>
+        <label>中継URL（GASのウェブアプリURL）<input type="text" id="s-url" autocomplete="off" inputmode="url"></label>
+        <label>合言葉<input type="password" id="s-pass" autocomplete="off"></label>
+        <div class="pickrow"><button class="btn" data-a="sytest">接続を確かめる</button><span class="rs" id="s-sy" role="status"></span></div>
+        <div class="pickrow">
+          <button class="btn" data-a="syup">この端末のデータで同期を始める</button>
+          <button class="btn" data-a="sydown">クラウドのデータを読み込んで始める</button>
+          <button class="btn hide" data-a="systop" id="systop">同期を止める</button>
+        </div>
+
+        <h3>バックアップ</h3>
+        <p class="lead">念のための控えをファイルで書き出せます（APIキーは含めません）。</p>
+        <div class="pickrow">
+          <button class="btn" data-a="export">書き出す</button>
+          <label class="filebtn"><input type="file" accept="application/json,.json" id="s-import"><span class="btn">読み込む</span></label>
+          <span class="rs" id="s-bk" role="status"></span>
+        </div>
+
+        <h3>その他</h3>
+        <div class="pickrow">
+          <button class="btn" data-a="sample">サンプルの家を入れる</button>
+          <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
+          <span class="rs" id="s-etc" role="status"></span>
+        </div>
+        <p class="lead sec">家の記録 v1.1.0</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+var KEY='ie-no-kiroku-v1', WH=1.2, Q=Math.PI/2;
+var TYPES={box:'その他（箱）',fridge:'冷蔵庫',tv:'テレビ・モニター',sofa:'ソファ',bed:'ベッド',table:'テーブル',desk:'デスク',chair:'いす',shelf:'棚',washer:'洗濯機',aircon:'エアコン',microwave:'電子レンジ',counter:'キッチン・カウンター',stairs:'階段'};
+var DEF={box:[40,50,40],fridge:[60,170,65],tv:[110,65,6],sofa:[180,70,85],bed:[100,45,200],table:[100,70,60],desk:[120,72,60],chair:[45,85,45],shelf:[80,150,35],washer:[60,95,60],aircon:[80,28,25],microwave:[48,30,38],counter:[180,85,65],stairs:[90,250,240]};
+var TOPPHOTO={table:1,desk:1,bed:1,counter:1};
+var ST={ok:'確認済み',none:'未確認',missing:'見つからない'}, STMARK={ok:'✓ ',none:'',missing:'! '};
+var LIGHTS=[['電球色','#FFC98A'],['温白色','#FFE2C0'],['昼白色','#FFF6EC'],['昼光色','#EAF2FF']];
+
+var $=function(id){return document.getElementById(id);};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function isHex(v){return typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v);}
+function num(v,lo,hi){v=parseFloat(String(v).replace(',','.')); return isFinite(v)?Math.max(lo,Math.min(hi,v)):null;}
+function snap(v){return Math.round(v*20)/20;}
+function r2(v){return Math.round(v*100)/100;}
+
+/* ---------- データ ---------- */
+function fresh(){return {v:1,n:1,floor:'f1',floors:[{id:'f1',name:'1階'},{id:'f2',name:'2階'}],rooms:[],items:[],plans:{},imgv:{},set:{key:'',model:'gemini-3.8-flash',theme:'auto'}};}
+var S=fresh();
+function norm(o){var b=fresh(); o.set=Object.assign(b.set,o.set||{}); o.plans=o.plans||{}; o.imgv=o.imgv||{}; o.floors=(o.floors&&o.floors.length)?o.floors:b.floors; o.n=o.n||1; if(!o.floors.some(function(f){return f.id===o.floor;})) o.floor=o.floors[0].id; return o;}
+try{var raw=localStorage.getItem(KEY); if(raw){var o=JSON.parse(raw); if(o&&o.v===1&&o.rooms&&o.items) S=norm(o);}}catch(e){}
+/* 同期で比べる中身（今どの階を見ているかは端末ごとなので含めない） */
+function syncStr(){var f=S.floor; S.floor=''; var t=JSON.stringify(S); S.floor=f; return t;}
+var saveT=0, lastStr=syncStr();
+function save(){clearTimeout(saveT); saveT=setTimeout(function(){
+  var ok=true; try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){ok=false;}
+  var t=syncStr(); if(t!==lastStr){lastStr=t; markDirty();}
+  if(!ok) $('saved').textContent='保存できませんでした'; else if(!SY.on) $('saved').textContent='保存済み（この端末）';
+},300);}
+function nid(p){return p+(S.n++);}
+function room(id){for(var i=0;i<S.rooms.length;i++)if(S.rooms[i].id===id)return S.rooms[i];return null;}
+function item(id){for(var i=0;i<S.items.length;i++)if(S.items[i].id===id)return S.items[i];return null;}
+function floorName(id){for(var i=0;i<S.floors.length;i++)if(S.floors[i].id===id)return S.floors[i].name;return '';}
+function floorRooms(f){f=f||S.floor;return S.rooms.filter(function(r){return r.floor===f;});}
+function floorItems(f){f=f||S.floor;return S.items.filter(function(i){return i.floor===f;});}
+function roomAt(f,x,z){var rs=floorRooms(f);for(var i=rs.length-1;i>=0;i--){var r=rs[i];if(x>=r.x&&x<=r.x+r.w&&z>=r.z&&z<=r.z+r.d)return r;}return null;}
+function fp(it){var k=Math.abs(Math.round((it.rot||0)/Q))%2;return k?[it.s[2],it.s[0]]:[it.s[0],it.s[2]];}
+function place(it){var r=it.room&&room(it.room);return (floorName(it.floor)||'')+(r?' '+r.name:' 部屋の外');}
+
+/* 写真は IndexedDB（使えない端末ではこの画面を開いている間だけ保持） */
+var DB=null, IMG={};
+function dbOpen(){return new Promise(function(res){try{var rq=indexedDB.open('ie-no-kiroku',1);
+  rq.onupgradeneeded=function(){rq.result.createObjectStore('img');};
+  rq.onsuccess=function(){DB=rq.result;try{var c=DB.transaction('img').objectStore('img').openCursor();
+    c.onsuccess=function(){var k=c.result;if(k){IMG[k.key]=k.value;k.continue();}else res();}; c.onerror=function(){res();};}catch(e){res();}};
+  rq.onerror=function(){res();};}catch(e){res();}});}
+function dbPut(k,v){IMG[k]=v; if(DB)try{DB.transaction('img','readwrite').objectStore('img').put(v,k);}catch(e){}}
+function dbDel(k){delete IMG[k]; if(DB)try{DB.transaction('img','readwrite').objectStore('img').delete(k);}catch(e){}}
+function imgPut(k,v){dbPut(k,v); S.imgv[k]=Date.now();}
+function imgDel(k){dbDel(k); delete S.imgv[k];}
+
+var view='3d', selI=null, selR=null, fFloor='all', query='', fitNext=true;
+
+/* ---------- 3D ---------- */
+var T=null;
+function parts(t,w,h,d){
+  var L=Math.min(0.05,w/4,d/4),i,a,n;
+  function legs(top){var x=w/2-L,z=d/2-L;return [[-x,top/2,-z,L,top,L],[x,top/2,-z,L,top,L],[-x,top/2,z,L,top,L],[x,top/2,z,L,top,L]];}
+  switch(t){
+    case 'fridge': return [[0,h*0.225,0,w,h*0.45,d],[0,h*0.725,0,w,h*0.55,d]];
+    case 'tv': return [[0,h*0.56,0,w,h*0.88,Math.min(d,0.08)],[0,h*0.06,0,w*0.35,h*0.12,Math.max(d,0.2)]];
+    case 'sofa': return [[0,h*0.25,d*0.1,w*0.8,h*0.5,d*0.8],[0,h*0.5,-d*0.4,w*0.8,h,d*0.2],[-w*0.45,h*0.35,0,w*0.1,h*0.7,d],[w*0.45,h*0.35,0,w*0.1,h*0.7,d]];
+    case 'bed': return [[0,h/2,0,w,h,d],[0,h*0.9,-d/2+0.04,w,h*1.8,0.08],[0,h+0.05,-d/2+0.35,w*0.6,0.1,0.35]];
+    case 'table': case 'desk': return [[0,h-0.025,0,w,0.05,d]].concat(legs(h-0.05));
+    case 'chair': return [[0,h*0.5,0,w,0.06,d],[0,h*0.76,-d/2+0.03,w,h*0.48,0.06]].concat(legs(h*0.5-0.03));
+    case 'shelf':
+      a=[[0,h/2,-d/2+0.01,w,h,0.02],[-w/2+0.015,h/2,0,0.03,h,d],[w/2-0.015,h/2,0,0.03,h,d]]; n=Math.max(2,Math.round(h/0.35));
+      for(i=0;i<=n;i++) a.push([0,0.015+(h-0.03)*i/n,0,w-0.06,0.03,d]);
+      return a;
+    case 'washer': return [[0,h/2,0,w,h,d],{r:Math.min(w,h)*0.3,y:h*0.5,z:d/2}];
+    case 'microwave': return [[0,h/2,0,w,h,d],[-w*0.14,h/2,d/2,w*0.66,h*0.8,0.012]];
+    case 'stairs':
+      a=[]; n=Math.max(3,Math.round(h/0.2));
+      for(i=0;i<n;i++){var sh=(i+1)*h/n; a.push([0,sh/2,-d/2+d*(i+0.5)/n,w,sh,d/n]);}
+      return a;
+    default: return [[0,h/2,0,w,h,d]];
+  }
+}
+function init3D(){
+  if(!window.THREE) throw new Error('three');
+  var canvas=$('view');
+  var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  var scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(40,1,0.1,200);
+  scene.add(new THREE.AmbientLight(0xffffff,0.66));
+  var sun=new THREE.DirectionalLight(0xffffff,0.34); sun.position.set(-4,10,-3); scene.add(sun);
+  var root=new THREE.Group(); scene.add(root);
+  var mEdge=new THREE.LineBasicMaterial({transparent:true,opacity:0.7});
+  var marker=new THREE.Mesh(new THREE.OctahedronGeometry(0.13),new THREE.MeshBasicMaterial()); marker.visible=false; scene.add(marker);
+  var pickable=[], mats={}, rmats=[], labels=[], TX={};
+  var orb={theta:-0.55,phi:0.92,r:13}, target=new THREE.Vector3();
+
+  function box(w,h,d,mat,x,y,z,parent){
+    var geo=new THREE.BoxGeometry(w,h,d), m=new THREE.Mesh(geo,mat); m.position.set(x,y,z);
+    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),mEdge)); (parent||root).add(m); return m;
+  }
+  function tex(id){
+    var src=IMG[id]; if(!src) return null;
+    if(!TX[id]||TX[id].src!==src){
+      var t=new THREE.TextureLoader().load(src,function(){draw();}); t.minFilter=THREE.LinearFilter; t.generateMipmaps=false;
+      TX[id]={src:src,t:t};
+    }
+    return TX[id].t;
+  }
+  function addItem(it){
+    var w=it.s[0],h=it.s[1],d=it.s[2], g=new THREE.Group(), mat=new THREE.MeshLambertMaterial();
+    parts(it.t||'box',w,h,d).forEach(function(p){
+      var m;
+      if(Array.isArray(p)) m=box(p[3],p[4],p[5],mat,p[0],p[1],p[2],g);
+      else{var geo=new THREE.CylinderGeometry(p.r,p.r,0.03,28); m=new THREE.Mesh(geo,mat); m.rotation.x=Q; m.position.set(0,p.y,p.z); m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),mEdge)); g.add(m);}
+      m.userData.id=it.id; pickable.push(m);
+    });
+    var tx=tex(it.id);
+    if(tx){
+      var a=it.pa||1, top=TOPPHOTO[it.t], bw=w*0.92, bh=(top?d:h)*0.92, pw=Math.min(bw,bh*a), ph=pw/a;
+      var pl=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph),new THREE.MeshBasicMaterial({map:tx}));
+      pl.userData.id=it.id;
+      if(top){pl.rotation.x=-Q; pl.position.set(0,h+0.008,0);} else pl.position.set(0,h/2,d/2+(it.t==='washer'?0.02:0.008));
+      g.add(pl); pickable.push(pl);
+    }
+    g.position.set(it.p[0],it.y||0,it.p[1]); g.rotation.y=it.rot||0; root.add(g); mats[it.id]=mat;
+  }
+  function rebuild(){
+    while(root.children.length){var c=root.children[0]; root.remove(c); c.traverse(function(o){if(o.geometry)o.geometry.dispose();});}
+    pickable=[]; mats={}; rmats=[]; labels=[];
+    var x0=1e9,z0=1e9,x1=-1e9,z1=-1e9, t=0.06;
+    floorRooms().forEach(function(r,i){
+      var fm=new THREE.MeshLambertMaterial(), wm=new THREE.MeshLambertMaterial(), cx=r.x+r.w/2, cz=r.z+r.d/2;
+      var slab=new THREE.Mesh(new THREE.BoxGeometry(r.w,0.06,r.d),fm); slab.position.set(cx,-0.03,cz); root.add(slab);
+      box(r.w,WH,t,wm,cx,WH/2,r.z+t/2); box(r.w,WH,t,wm,cx,WH/2,r.z+r.d-t/2);
+      box(t,WH,Math.max(0.01,r.d-2*t),wm,r.x+t/2,WH/2,cz); box(t,WH,Math.max(0.01,r.d-2*t),wm,r.x+r.w-t/2,WH/2,cz);
+      var lp=new THREE.PointLight(0xffffff,0.22,Math.max(r.w,r.d)*1.7,1.2); lp.position.set(cx,2.3,cz); root.add(lp);
+      var sp=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false,transparent:true})); sp.position.set(cx,1.7,cz); sp.renderOrder=5; root.add(sp);
+      labels.push({sp:sp,text:r.name}); rmats.push({r:r,i:i,fm:fm,wm:wm,lp:lp});
+      x0=Math.min(x0,r.x); z0=Math.min(z0,r.z); x1=Math.max(x1,r.x+r.w); z1=Math.max(z1,r.z+r.d);
+    });
+    floorItems().forEach(function(it){addItem(it); x0=Math.min(x0,it.p[0]); z0=Math.min(z0,it.p[1]); x1=Math.max(x1,it.p[0]); z1=Math.max(z1,it.p[1]);});
+    if(x1<x0){x0=z0=0;x1=z1=4;}
+    target.set((x0+x1)/2,0.3,(z0+z1)/2);
+    if(fitNext){var span=Math.max(x1-x0,z1-z0,4), asp=camera.aspect||1; orb.r=(span*1.25+5)*(asp<1?1.4:(asp<1.5?1.1:1)); fitNext=false;}
+    paint();
+  }
+  function makeLabel(l,color){
+    var c=document.createElement('canvas'), x=c.getContext('2d'), f='600 44px sans-serif';
+    x.font=f; var w=Math.ceil(x.measureText(l.text).width)+16; c.width=w; c.height=60;
+    x=c.getContext('2d'); x.font=f; x.fillStyle=color; x.textBaseline='middle'; x.fillText(l.text,8,32);
+    var tx=new THREE.CanvasTexture(c); tx.minFilter=THREE.LinearFilter; tx.generateMipmaps=false;
+    l.sp.material.map=tx; l.sp.material.needsUpdate=true; l.sp.scale.set(w/60*0.42,0.42,1);
+  }
+  function paint(){
+    renderer.setClearColor(new THREE.Color(css('--bg')),1);
+    var ac=css('--accent'), ic=css('--item'), muted=css('--muted');
+    mEdge.color.set(css('--edge')); marker.material.color.set(ac); marker.visible=false;
+    rmats.forEach(function(m){
+      m.fm.color.set(m.r.fl||css(m.i%2?'--floor2':'--floor')); m.wm.color.set(m.r.wall||css('--wall'));
+      m.lp.color.set(m.r.light||'#ffffff'); m.lp.intensity=0.44*(m.r.lux==null?50:m.r.lux)/100;
+    });
+    floorItems().forEach(function(it){
+      var mt=mats[it.id]; if(!mt) return; var on=it.id===selI;
+      mt.color.set(it.color||ic); mt.emissive.set(on?ac:'#000000'); mt.emissiveIntensity=on?0.3:0;
+      mt.transparent=it.st==='missing'&&!on; mt.opacity=mt.transparent?0.4:1; mt.needsUpdate=true;
+      if(on){marker.position.set(it.p[0],(it.y||0)+it.s[1]+0.4,it.p[1]); marker.visible=true;}
+    });
+    labels.forEach(function(l){makeLabel(l,muted);});
+    draw();
+  }
+  function draw(){
+    var sp=Math.sin(orb.phi);
+    camera.position.set(target.x+orb.r*sp*Math.sin(orb.theta),target.y+orb.r*Math.cos(orb.phi),target.z+orb.r*sp*Math.cos(orb.theta));
+    camera.lookAt(target); renderer.render(scene,camera);
+  }
+  function resize(){
+    var w=canvas.clientWidth,h=canvas.clientHeight; if(!w||!h) return;
+    renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); draw();
+  }
+  if(window.ResizeObserver) new ResizeObserver(resize).observe(canvas); else window.addEventListener('resize',resize);
+  resize();
+
+  var pts=new Map(), moved=0, pinch0=0, r0=0;
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+  function pdist(){var a=[]; pts.forEach(function(p){a.push(p);}); return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1;}
+  canvas.addEventListener('pointerdown',function(e){
+    try{canvas.setPointerCapture(e.pointerId);}catch(_){}
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1) moved=0; else if(pts.size===2){pinch0=pdist(); r0=orb.r; moved=99;}
+  });
+  canvas.addEventListener('pointermove',function(e){
+    var p=pts.get(e.pointerId); if(!p) return;
+    var dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+    if(pts.size===1){moved+=Math.abs(dx)+Math.abs(dy); if(moved>6){orb.theta-=dx*0.008; orb.phi=clamp(orb.phi-dy*0.006,0.2,1.45); draw();}}
+    else if(pts.size===2){orb.r=clamp(r0*pinch0/pdist(),4,80); draw();}
+  });
+  function up(e){var n=pts.size; pts.delete(e.pointerId); if(e.type==='pointerup'&&n===1&&moved<=6) pick(e);}
+  canvas.addEventListener('pointerup',up); canvas.addEventListener('pointercancel',up);
+  canvas.addEventListener('wheel',function(e){e.preventDefault(); orb.r=clamp(orb.r*(1+e.deltaY*0.001),4,80); draw();},{passive:false});
+  var ray=new THREE.Raycaster();
+  function pick(e){
+    var b=canvas.getBoundingClientRect(), v=new THREE.Vector2((e.clientX-b.left)/b.width*2-1,-((e.clientY-b.top)/b.height)*2+1);
+    ray.setFromCamera(v,camera); var hit=ray.intersectObjects(pickable,false);
+    selI=hit.length?hit[0].object.userData.id:null; selR=null; refresh();
+  }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){redraw();});
+  T={rebuild:rebuild,resize:resize};
+}
+
+/* ---------- 間取り編集（2D） ---------- */
+var P={s:42,ox:30,oy:96,mode:'select',fit:{},im:{}}, G=null, PP=new Map();
+function planImage(){
+  var k='plan:'+S.floor, src=IMG[k]; if(!src) return null;
+  if(!P.im[k]||P.im[k]._src!==src){var im=new Image(); im._src=src; im.onload=function(){if(view==='2d')drawPlan();}; im.src=src; P.im[k]=im;}
+  return P.im[k].complete&&P.im[k].naturalWidth?P.im[k]:null;
+}
+function planCfg(){if(!S.plans[S.floor])S.plans[S.floor]={wm:10}; return S.plans[S.floor];}
+function fitPlan(){
+  var c=$('plan'), W=c.clientWidth||300, H=c.clientHeight||300, x0=1e9,z0=1e9,x1=-1e9,z1=-1e9;
+  floorRooms().forEach(function(r){x0=Math.min(x0,r.x);z0=Math.min(z0,r.z);x1=Math.max(x1,r.x+r.w);z1=Math.max(z1,r.z+r.d);});
+  var im=planImage(); if(im){var wm=planCfg().wm; x0=Math.min(x0,0);z0=Math.min(z0,0);x1=Math.max(x1,wm);z1=Math.max(z1,wm*im.naturalHeight/im.naturalWidth);}
+  if(x1<x0){x0=0;z0=0;x1=8;z1=6;}
+  var top=96, pad=24; P.s=Math.max(8,Math.min((W-pad*2)/(x1-x0),(H-top-pad)/(z1-z0),120));
+  P.ox=(W-(x1-x0)*P.s)/2-x0*P.s; P.oy=top+((H-top-pad)-(z1-z0)*P.s)/2-z0*P.s; P.fit[S.floor]=true;
+}
+function drawPlan(){
+  var c=$('plan'), dpr=Math.min(window.devicePixelRatio||1,2), W=c.clientWidth, H=c.clientHeight; if(!W||!H) return;
+  if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr); c.height=Math.round(H*dpr);}
+  var x=c.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0);
+  var ink=css('--ink'), line=css('--line'), ac=css('--accent'), muted=css('--muted');
+  x.fillStyle=css('--bg'); x.fillRect(0,0,W,H);
+  var im=planImage();
+  if(im){var wm=planCfg().wm; x.globalAlpha=0.55; x.drawImage(im,P.ox,P.oy,wm*P.s,wm*P.s*im.naturalHeight/im.naturalWidth); x.globalAlpha=1;}
+  if(P.s>=14){x.strokeStyle=line; x.lineWidth=1; x.beginPath();
+    var gx0=Math.floor(-P.ox/P.s), gx1=Math.ceil((W-P.ox)/P.s), gz0=Math.floor(-P.oy/P.s), gz1=Math.ceil((H-P.oy)/P.s), i;
+    for(i=gx0;i<=gx1;i++){var sx=Math.round(P.ox+i*P.s)+0.5; x.moveTo(sx,0); x.lineTo(sx,H);}
+    for(i=gz0;i<=gz1;i++){var sy=Math.round(P.oy+i*P.s)+0.5; x.moveTo(0,sy); x.lineTo(W,sy);}
+    x.globalAlpha=0.5; x.stroke(); x.globalAlpha=1;}
+  x.font='600 13px '+css('--body'); x.textBaseline='top';
+  floorRooms().forEach(function(r,i){
+    var sx=P.ox+r.x*P.s, sy=P.oy+r.z*P.s, w=r.w*P.s, h=r.d*P.s, on=r.id===selR;
+    x.globalAlpha=im?0.55:1; x.fillStyle=r.fl||css(i%2?'--floor2':'--floor'); x.fillRect(sx,sy,w,h); x.globalAlpha=1;
+    x.lineWidth=on?3:2; x.strokeStyle=on?ac:ink; x.strokeRect(sx,sy,w,h);
+    x.fillStyle=ink; x.fillText(r.name,sx+6,sy+5,Math.max(10,w-10));
+    x.fillStyle=muted; x.font='11px '+css('--body'); x.fillText(r2(r.w)+'×'+r2(r.d)+'m',sx+6,sy+22,Math.max(10,w-10)); x.font='600 13px '+css('--body');
+    if(on){x.fillStyle=ac; x.fillRect(sx+w-8,sy+h-8,16,16);}
+  });
+  floorItems().forEach(function(it){
+    var f=fp(it), sx=P.ox+(it.p[0]-f[0]/2)*P.s, sy=P.oy+(it.p[1]-f[1]/2)*P.s, on=it.id===selI;
+    x.fillStyle=it.color||css('--item'); x.globalAlpha=it.st==='missing'?0.4:0.95; x.fillRect(sx,sy,f[0]*P.s,f[1]*P.s); x.globalAlpha=1;
+    x.lineWidth=on?2.5:1; x.strokeStyle=on?ac:ink; x.strokeRect(sx,sy,f[0]*P.s,f[1]*P.s);
+    /* 正面の向きを短い線で示す */
+    var k=((Math.round((it.rot||0)/Q)%4)+4)%4, cx=P.ox+it.p[0]*P.s, cy=P.oy+it.p[1]*P.s, dx=[0,1,0,-1][k], dy=[1,0,-1,0][k];
+    x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+dx*f[0]*P.s/2,cy+dy*f[1]*P.s/2); x.stroke();
+  });
+  if(G&&G.k==='draw'){x.setLineDash([5,4]); x.strokeStyle=ac; x.lineWidth=2;
+    x.strokeRect(P.ox+Math.min(G.x0,G.x1)*P.s,P.oy+Math.min(G.z0,G.z1)*P.s,Math.abs(G.x1-G.x0)*P.s,Math.abs(G.z1-G.z0)*P.s); x.setLineDash([]);}
+}
+function initPlan(){
+  var c=$('plan');
+  function world(e){var b=c.getBoundingClientRect(); return {x:(e.clientX-b.left-P.ox)/P.s,z:(e.clientY-b.top-P.oy)/P.s,sx:e.clientX-b.left,sy:e.clientY-b.top};}
+  function two(){var a=[]; PP.forEach(function(p){a.push(p);}); return {d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,cx:(a[0].x+a[1].x)/2,cy:(a[0].y+a[1].y)/2};}
+  function hitItem(w){var its=floorItems();for(var i=its.length-1;i>=0;i--){var f=fp(its[i]),m=Math.max(0,(22/P.s-Math.min(f[0],f[1]))/2);
+    if(Math.abs(w.x-its[i].p[0])<=f[0]/2+m&&Math.abs(w.z-its[i].p[1])<=f[1]/2+m)return its[i];}return null;}
+  c.addEventListener('pointerdown',function(e){
+    try{c.setPointerCapture(e.pointerId);}catch(_){}
+    var b=c.getBoundingClientRect(); PP.set(e.pointerId,{x:e.clientX-b.left,y:e.clientY-b.top});
+    if(PP.size===2){var t=two(); G={k:'pinch',d0:t.d,s0:P.s,wx:(t.cx-P.ox)/P.s,wz:(t.cy-P.oy)/P.s}; return;}
+    var w=world(e);
+    if(P.mode==='draw'){G={k:'draw',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
+    var r=selR&&room(selR);
+    if(r&&r.floor===S.floor&&Math.hypot(w.sx-(P.ox+(r.x+r.w)*P.s),w.sy-(P.oy+(r.z+r.d)*P.s))<20){G={k:'resize',r:r}; return;}
+    var it=hitItem(w);
+    if(it){selI=it.id; selR=null; G={k:'item',it:it,dx:w.x-it.p[0],dz:w.z-it.p[1]}; refresh(); return;}
+    var rr=roomAt(S.floor,w.x,w.z);
+    if(rr){selR=rr.id; selI=null; G={k:'room',r:rr,dx:w.x-rr.x,dz:w.z-rr.z}; refresh(); return;}
+    if(selI||selR){selI=selR=null; refresh();}
+    G={k:'pan',x:w.sx,y:w.sy};
+  });
+  c.addEventListener('pointermove',function(e){
+    var p=PP.get(e.pointerId); if(!p||!G) return;
+    var b=c.getBoundingClientRect(); p.x=e.clientX-b.left; p.y=e.clientY-b.top;
+    var w=world(e);
+    if(G.k==='pinch'){if(PP.size<2) return; var t=two(); P.s=Math.max(8,Math.min(300,G.s0*t.d/G.d0)); P.ox=t.cx-G.wx*P.s; P.oy=t.cy-G.wz*P.s;}
+    else if(G.k==='draw'){G.x1=snap(w.x); G.z1=snap(w.z);}
+    else if(G.k==='resize'){G.r.w=Math.max(0.5,snap(w.x-G.r.x)); G.r.d=Math.max(0.5,snap(w.z-G.r.z)); G.ch=true; if($('r-w')){$('r-w').value=r2(G.r.w); $('r-d').value=r2(G.r.d);}}
+    else if(G.k==='item'){G.it.p=[snap(w.x-G.dx),snap(w.z-G.dz)]; G.ch=true;}
+    else if(G.k==='room'){var nx=snap(w.x-G.dx), nz=snap(w.z-G.dz), ddx=nx-G.r.x, ddz=nz-G.r.z;
+      if(ddx||ddz){S.items.forEach(function(it){if(it.room===G.r.id){it.p=[r2(it.p[0]+ddx),r2(it.p[1]+ddz)];}}); G.r.x=nx; G.r.z=nz; G.ch=true;}}
+    else if(G.k==='pan'){P.ox+=w.sx-G.x; P.oy+=w.sy-G.y; G.x=w.sx; G.y=w.sy;}
+    drawPlan();
+  });
+  function up(e){
+    PP.delete(e.pointerId); var g=G; if(!g) return;
+    if(g.k==='pinch'){if(PP.size<2) G=null; return;}
+    G=null;
+    if(g.k==='draw'){
+      var x=Math.min(g.x0,g.x1), z=Math.min(g.z0,g.z1), w=Math.abs(g.x1-g.x0), d=Math.abs(g.z1-g.z0);
+      if(w>=0.4&&d>=0.4){var r={id:nid('r'),floor:S.floor,name:'部屋'+(floorRooms().length+1),x:x,z:z,w:w,d:d,wall:null,fl:null,light:null,lux:50}; S.rooms.push(r); selR=r.id; selI=null; setMode('select');}
+      refresh(); return;
+    }
+    if(g.k==='item'&&g.ch){var rr=roomAt(S.floor,g.it.p[0],g.it.p[1]); g.it.room=rr?rr.id:null;}
+    if(g.ch) refresh(); else drawPlan();
+  }
+  c.addEventListener('pointerup',up); c.addEventListener('pointercancel',up);
+  c.addEventListener('wheel',function(e){e.preventDefault(); var w=world(e), s=Math.max(8,Math.min(300,P.s*(1-e.deltaY*0.0015))); P.ox=w.sx-w.x*s; P.oy=w.sy-w.z*s; P.s=s; drawPlan();},{passive:false});
+  if(window.ResizeObserver) new ResizeObserver(function(){if(view==='2d')drawPlan();}).observe(c);
+}
+function setMode(m){P.mode=m; [].forEach.call(document.querySelectorAll('[data-a="mode"]'),function(b){b.setAttribute('aria-pressed',String(b.dataset.v===m));});}
+function setView(v){
+  view=v; $('view').classList.toggle('hide',v!=='3d'); $('plan').classList.toggle('hide',v!=='2d'); $('tbar').classList.toggle('hide',v!=='2d');
+  [].forEach.call($('viewseg').children,function(b){b.setAttribute('aria-pressed',String(b.dataset.v===v));});
+  if(v==='2d'&&!P.fit[S.floor]) fitPlan();
+  if(v==='3d'&&T) T.resize();
+  refresh();
+}
+
+/* ---------- 画面 ---------- */
+function redraw(){
+  if(view==='3d'){if(T)T.rebuild();} else drawPlan();
+  $('empty').style.display=(view==='3d'&&T&&!floorRooms().length&&!floorItems().length)?'flex':'none';
+  $('planoff').classList.toggle('hide',!IMG['plan:'+S.floor]);
+  save();
+}
+function refresh(){renderSum(); renderFloors(); renderChips(); renderList(); renderInv(); renderDeco(); renderRoomOptions(); renderCards(); redraw();}
+function sub(it){return esc(it.maker||'メーカー未入力')+' ・ '+esc(it.model||'型番未入力');}
+function pill(it){return '<span class="pill '+it.st+'">'+STMARK[it.st]+ST[it.st]+'</span>';}
+function renderSum(){var ok=S.items.filter(function(i){return i.st==='ok';}).length; $('sum').textContent=S.items.length+'点 ・ 確認済み '+ok;}
+function renderFloors(){$('floorseg').innerHTML=S.floors.map(function(f){return '<button data-a="floor" data-v="'+f.id+'" aria-pressed="'+(f.id===S.floor)+'">'+esc(f.name)+'</button>';}).join('');}
+function renderChips(){
+  var h='<button class="chip" data-a="ff" data-v="all" aria-pressed="'+(fFloor==='all')+'">すべて</button>';
+  S.floors.forEach(function(f){h+='<button class="chip" data-a="ff" data-v="'+f.id+'" aria-pressed="'+(fFloor===f.id)+'">'+esc(f.name)+'</button>';});
+  $('chips').innerHTML=h;
+}
+function renderList(){
+  var q=query.toLowerCase();
+  var rows=S.items.filter(function(it){
+    if(fFloor!=='all'&&it.floor!==fFloor) return false;
+    return !q||(it.name+' '+(it.maker||'')+' '+(it.model||'')+' '+(it.memo||'')).toLowerCase().indexOf(q)>=0;
+  });
+  $('list').innerHTML=rows.length?rows.map(function(it){
+    return '<li class="row'+(it.id===selI?' sel':'')+'"><button class="main" data-a="sel" data-v="'+it.id+'"><span class="nm">'+esc(it.name)+'</span><span class="sub">'+esc(place(it))+' ・ '+sub(it)+'</span></button>'+pill(it)+'</li>';
+  }).join(''):'<li class="empty">'+(S.items.length?'当てはまる物がありません。':'まだ何も登録されていません。「＋登録」から写真を選んで追加します。')+'</li>';
+}
+function renderInv(){
+  var n=S.items.length, ok=0, miss=0; S.items.forEach(function(i){if(i.st==='ok')ok++; else if(i.st==='missing')miss++;});
+  if(!n){$('inv').innerHTML='<p class="empty">物を登録すると、ここで部屋ごとに「あった／ない」を確認できます。</p>'; return;}
+  var done=ok+miss, h='<div class="prog"><div class="nums"><span class="big">'+done+' / '+n+'</span><span class="rest">確認済み '+ok+' ・ 見つからない '+miss+' ・ 残り '+(n-done)+'</span><button class="btn sm reset" data-a="invreset">やり直す</button></div><div class="bar"><i style="width:'+Math.round(done/n*100)+'%"></i></div></div>';
+  var groups=[]; S.floors.forEach(function(f){floorRooms(f.id).forEach(function(r){groups.push({t:f.name+' '+r.name,its:S.items.filter(function(i){return i.room===r.id;})});});});
+  groups.push({t:'部屋の外',its:S.items.filter(function(i){return !i.room||!room(i.room);})});
+  groups.forEach(function(g){
+    if(!g.its.length) return;
+    var d=g.its.filter(function(i){return i.st!=='none';}).length;
+    h+='<h3>'+esc(g.t)+'<span>'+d+' / '+g.its.length+'</span></h3><ul class="rows">';
+    g.its.forEach(function(it){
+      h+='<li class="row'+(it.id===selI?' sel':'')+'"><button class="main" data-a="sel" data-v="'+it.id+'"><span class="nm">'+esc(it.name)+'</span><span class="sub">'+esc(it.model||'型番未入力')+'</span></button>'
+        +'<button class="btn sm" data-a="st" data-v="ok" data-id="'+it.id+'" aria-pressed="'+(it.st==='ok')+'">✓ あった</button>'
+        +'<button class="btn sm" data-a="st" data-v="missing" data-id="'+it.id+'" aria-pressed="'+(it.st==='missing')+'">ない</button></li>';
+    });
+    h+='</ul>';
+  });
+  $('inv').innerHTML=h;
+}
+function renderCards(){
+  var d=$('detail'), it=selI&&item(selI), rc=$('rcard'), r=(view==='2d'&&selR)?room(selR):null;
+  if(it){
+    d.className='card on';
+    d.innerHTML=(IMG[it.id]?'<img src="'+IMG[it.id]+'" alt="">':'')
+      +'<div class="body"><h2>'+esc(it.name)+'</h2><dl>'
+      +'<dt>場所</dt><dd>'+esc(place(it))+'</dd>'
+      +'<dt>メーカー</dt><dd>'+esc(it.maker||'未入力')+'</dd>'
+      +'<dt>型番</dt><dd>'+esc(it.model||'未入力')+'</dd>'
+      +'<dt>購入</dt><dd>'+esc(it.bought||'未入力')+(it.warranty?'（保証 '+esc(it.warranty)+' まで）':'')+'</dd>'
+      +(it.memo?'<dt>メモ</dt><dd>'+esc(it.memo)+'</dd>':'')+'</dl>'
+      +'<div class="acts"><button class="btn sm" data-a="st" data-v="ok" data-id="'+it.id+'" aria-pressed="'+(it.st==='ok')+'">✓ あった</button>'
+      +'<button class="btn sm" data-a="st" data-v="missing" data-id="'+it.id+'" aria-pressed="'+(it.st==='missing')+'">ない</button>'
+      +'<button class="btn sm" data-a="rot">向きを回す</button><button class="btn sm" data-a="edit">編集</button></div></div>'
+      +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
+  }else{d.className='card'; d.innerHTML='';}
+  if(r&&!it){
+    rc.className='card on';
+    rc.innerHTML='<div class="body"><div class="rgrid"><label>部屋の名前<input type="text" id="r-name" data-rf="name" value="'+esc(r.name)+'"></label>'
+      +'<label>幅 m<input type="text" inputmode="decimal" id="r-w" data-rf="w" value="'+r2(r.w)+'"></label>'
+      +'<label>奥行 m<input type="text" inputmode="decimal" id="r-d" data-rf="d" value="'+r2(r.d)+'"></label></div>'
+      +'<div class="scale"><label>この部屋の実際の幅 m<input type="text" inputmode="decimal" id="r-real"></label><button class="btn sm" data-a="rescale">この階の縮尺を合わせる</button>'
+      +'<span class="grow"></span><button class="btn sm danger" data-a="delroom">部屋を削除</button></div></div>'
+      +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
+  }else{rc.className='card'; rc.innerHTML='';}
+}
+function renderRoomOptions(){
+  var el=$('f-room'), v=el.value, h='<option value="">（部屋の外・今の階）</option>';
+  S.floors.forEach(function(f){floorRooms(f.id).forEach(function(r){h+='<option value="'+r.id+'">'+esc(f.name+' '+r.name)+'</option>';});});
+  el.innerHTML=h; el.value=v; if(el.value!==v) el.value='';
+}
+function renderDeco(){
+  var rs=floorRooms(), h='<p class="lead">'+esc(floorName(S.floor))+'の内装です。色を変えるとすぐ反映されます。部屋の写真を選ぶと、壁紙・床・照明の色を自動で入れます。</p>';
+  if(!rs.length) h+='<p class="empty">この階にはまだ部屋がありません。</p>';
+  rs.forEach(function(r,i){
+    var a=' data-rid="'+r.id+'"';
+    h+='<h3>'+esc(r.name)+'</h3><div class="deco">'
+      +'<label>壁紙<input type="color" id="dw-'+r.id+'"'+a+' data-rk="wall" value="'+(r.wall||css('--wall')).toLowerCase()+'"></label>'
+      +'<label>床<input type="color" id="df-'+r.id+'"'+a+' data-rk="fl" value="'+(r.fl||css(i%2?'--floor2':'--floor')).toLowerCase()+'"></label>'
+      +'<label>照明の色<input type="color" id="dl-'+r.id+'"'+a+' data-rk="light" value="'+(r.light||'#ffffff').toLowerCase()+'"></label>'
+      +'<label class="lux">照明の明るさ<input type="range" min="0" max="100"'+a+' data-rk="lux" value="'+(r.lux==null?50:r.lux)+'"></label></div>'
+      +'<div class="chips">'+LIGHTS.map(function(l){return '<button class="chip" data-a="light" data-v="'+l[1]+'"'+a+'>'+l[0]+'</button>';}).join('')+'</div>'
+      +'<div class="pickrow sec"><label class="filebtn"><input type="file" accept="image/*" data-roomphoto="'+r.id+'"><span class="btn sm">部屋の写真から自動で反映</span></label>'
+      +'<button class="btn sm" data-a="decoreset"'+a+'>もとに戻す</button><span class="rs" id="rs-'+r.id+'" role="status"></span></div>';
+  });
+  $('deco').innerHTML=h;
+}
+function showTab(name){['items','inv','form','deco','set'].forEach(function(t){$('t-'+t).setAttribute('aria-selected',String(t===name)); $('p-'+t).className='pane'+(t===name?' on':'');});}
+function selectItem(id){var it=item(id); if(!it) return; selI=id; selR=null; if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;} if(view==='2d'&&!P.fit[S.floor]) fitPlan(); refresh();}
+
+/* ---------- 写真・AI ---------- */
+function toJpeg(file,max){
+  return new Promise(function(res,rej){
+    var url; try{url=URL.createObjectURL(file);}catch(e){return rej(e);}
+    var im=new Image();
+    im.onload=function(){
+      var k=Math.min(1,max/Math.max(im.width,im.height)), c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k));
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url);
+      res({url:c.toDataURL('image/jpeg',0.82),canvas:c,a:c.width/c.height});
+    };
+    im.onerror=function(){rej(new Error('image'));}; im.src=url;
+  });
+}
+function avg(c,x0,y0,x1,y1){
+  var x=Math.floor(c.width*x0), y=Math.floor(c.height*y0), w=Math.max(1,Math.floor(c.width*(x1-x0))), h=Math.max(1,Math.floor(c.height*(y1-y0)));
+  var d=c.getContext('2d').getImageData(x,y,w,h).data, r=0,g=0,b=0,n=0;
+  for(var i=0;i<d.length;i+=16){r+=d[i];g+=d[i+1];b+=d[i+2];n++;}
+  function hx(v){v=Math.round(v/n).toString(16); return v.length<2?'0'+v:v;}
+  return '#'+hx(r)+hx(g)+hx(b);
+}
+var API='https://generativelanguage.googleapis.com/v1beta/models';
+var FALLBACKS=['gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite'];
+async function geminiOne(model,prompt,dataUrl){
+  var res=await fetch(API+'/'+encodeURIComponent(model.replace(/^models\//,''))+':generateContent',{method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key':S.set.key},
+    body:JSON.stringify({contents:[{parts:[{text:prompt},{inline_data:{mime_type:'image/jpeg',data:dataUrl.split(',')[1]}}]}],generationConfig:{responseMimeType:'application/json',temperature:0.2}})});
+  if(!res.ok){var er=new Error('HTTP '+res.status); er.code=res.status; throw er;}
+  var j=await res.json(), c=j.candidates&&j.candidates[0], t=c&&c.content&&c.content.parts?c.content.parts.map(function(p){return p.text||'';}).join(''):'';
+  return JSON.parse(t.replace(/^\s*```(?:json)?/,'').replace(/```\s*$/,'').trim());
+}
+/* 設定のモデル → 切り替え先の順に試す。混雑(5xx)や通信エラーは同じモデルで1回やり直し、
+   上限(429)・モデルなし(404等)はすぐ次のモデルへ。キーの間違い(401/403)はそこで終了。 */
+async function gemini(prompt,dataUrl){
+  var chain=[S.set.model||FALLBACKS[0]].concat(FALLBACKS).filter(function(m,i,a){return a.indexOf(m)===i;}), last;
+  for(var i=0;i<chain.length;i++){
+    for(var at=0;at<2;at++){
+      try{return await geminiOne(chain[i],prompt,dataUrl);}
+      catch(e){last=e; if(e.code===401||e.code===403) throw e; if(e.code&&e.code<500) break; if(at===0) await new Promise(function(r){setTimeout(r,1200);});}
+    }
+  }
+  throw last;
+}
+var PROMPT='写真に写っている主な家電・家具を1つだけ判定し、JSONオブジェクトだけで答えてください。'
+ +'キー: name（日本語の一般的な呼び名）, type（次のどれか1つ: '+Object.keys(TYPES).join(',')+'。当てはまらなければ box）, '
+ +'maker（写真の中の文字として読み取れた場合だけ。読めなければ空文字）, model（型番が文字として読み取れた場合だけ。読めなければ空文字）, '
+ +'width_cm, height_cm, depth_cm（見た目からの目安。数値）, color_hex（本体の主な色。#RRGGBB）。メーカー名や型番を推測で作らないこと。';
+var ROOMPROMPT='この部屋の写真から、壁（壁紙）の主な色、床の主な色、照明の色味を判定し、JSONオブジェクトだけで答えてください。'
+ +'キー: wall_hex, floor_hex（どちらも #RRGGBB）, light（電球色, 温白色, 昼白色, 昼光色, 不明 のどれか1つ。照明がついていない・判断できない場合は 不明）。';
+
+/* ---------- 登録・編集フォーム ---------- */
+var E={id:null,photo:null,pa:1}, job=0;
+function setSize(a){$('f-w').value=a[0]; $('f-h').value=a[1]; $('f-d').value=a[2];}
+function openForm(it){
+  ++job; E={id:it?it.id:null,photo:null,pa:it?(it.pa||1):1};
+  $('f-title').textContent=it?'「'+it.name+'」を編集':'新しく登録';
+  $('f-name').value=it?it.name:''; $('f-maker').value=it?(it.maker||''):''; $('f-model').value=it?(it.model||''):'';
+  $('f-type').value=it?(it.t||'box'):'box';
+  renderRoomOptions(); $('f-room').value=it?(it.room||''):(selR||''); if($('f-room').value==null) $('f-room').value='';
+  setSize(it?[Math.round(it.s[0]*100),Math.round(it.s[1]*100),Math.round(it.s[2]*100)]:DEF.box);
+  $('f-y').value=it?Math.round((it.y||0)*100):0;
+  $('f-color').value=(it&&it.color?it.color:css('--item')).toLowerCase();
+  $('f-bought').value=it?(it.bought||''):''; $('f-warranty').value=it?(it.warranty||''):''; $('f-memo').value=it?(it.memo||''):'';
+  var src=it&&IMG[it.id]; $('prev').src=src||''; $('prev').classList.toggle('hide',!src);
+  $('f-del').classList.toggle('hide',!it); $('f-note').textContent=''; $('f-stat').textContent=''; $('f-file').value='';
+}
+$('f-type').innerHTML=Object.keys(TYPES).map(function(k){return '<option value="'+k+'">'+TYPES[k]+'</option>';}).join('');
+$('f-type').addEventListener('change',function(e){setSize(DEF[e.target.value]);});
+$('f-file').addEventListener('change',async function(e){
+  var f=e.target.files&&e.target.files[0]; if(!f) return;
+  var my=++job, note=$('f-note');
+  try{
+    note.textContent='写真を読み込んでいます…';
+    var ph=await toJpeg(f,900); if(my!==job) return;
+    E.photo=ph.url; E.pa=ph.a; $('prev').src=ph.url; $('prev').classList.remove('hide');
+    try{$('f-color').value=avg(ph.canvas,0.3,0.3,0.7,0.7);}catch(_){}
+    if(!S.set.key){note.textContent='写真を付けました。色は写真の中央から取っています。AI読み取りは「設定」でAPIキーを入れると使えます。'; return;}
+    note.textContent='AIが写真を読み取っています…';
+    var r=await gemini(PROMPT,ph.url); if(my!==job||!r||typeof r!=='object') return;
+    var t=TYPES[r.type]?r.type:'box', d=DEF[t];
+    $('f-type').value=t;
+    if(r.name&&!$('f-name').value) $('f-name').value=String(r.name).slice(0,40);
+    if(r.maker&&!$('f-maker').value) $('f-maker').value=String(r.maker).slice(0,40);
+    if(r.model&&!$('f-model').value) $('f-model').value=String(r.model).slice(0,40);
+    if(isHex(r.color_hex)) $('f-color').value=r.color_hex.toLowerCase();
+    setSize([num(r.width_cm,3,500)||d[0],num(r.height_cm,3,400)||d[1],num(r.depth_cm,3,500)||d[2]]);
+    note.textContent='AIの読み取り結果を入れました。サイズと色は見た目からの目安です。メーカーと型番は写真の文字が読めたときだけ入ります。保存前に確かめてください。';
+  }catch(err){
+    if(my===job) note.textContent=E.photo?'AIの読み取りに失敗しました（'+(err&&err.message||'通信エラー')+'）。手で入力してください。':'写真を開けませんでした。';
+  }
+});
+$('form').addEventListener('submit',function(e){
+  e.preventDefault();
+  var name=$('f-name').value.trim(); if(!name) return;
+  var t=$('f-type').value, d=DEF[t], rm=room($('f-room').value), it=E.id&&item(E.id), isNew=!it;
+  var s=[(num($('f-w').value,1,800)||d[0])/100,(num($('f-h').value,1,500)||d[1])/100,(num($('f-d').value,1,800)||d[2])/100];
+  if(isNew){
+    var fl=rm?rm.floor:S.floor, n=floorItems(fl).length;
+    it={id:nid('i'),st:'none',rot:0,floor:fl,p:rm?[r2(rm.x+rm.w/2+((n%3)-1)*0.5),r2(rm.z+rm.d/2+((n%2)?0.4:-0.1))]:[r2(((n%4))*0.7),r2(-1)]};
+    S.items.push(it);
+  }else if((it.room||'')!==(rm?rm.id:'')&&rm){it.floor=rm.floor; it.p=[r2(rm.x+rm.w/2),r2(rm.z+rm.d/2)];}
+  it.name=name; it.t=t; it.s=s; it.room=rm?rm.id:null; it.y=(num($('f-y').value,0,400)||0)/100;
+  it.maker=$('f-maker').value.trim(); it.model=$('f-model').value.trim(); it.color=$('f-color').value;
+  it.bought=$('f-bought').value.trim(); it.warranty=$('f-warranty').value.trim(); it.memo=$('f-memo').value.trim();
+  if(E.photo){imgPut(it.id,E.photo); it.pa=E.pa;}
+  if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;}
+  selI=it.id; selR=null; openForm(it);
+  $('f-stat').textContent=(isNew?'登録しました。':'保存しました。')+'「間取り」で場所と向きを動かせます。';
+  refresh();
+});
+
+/* ---------- 内装の自動反映 ---------- */
+async function roomFromPhoto(r,file){
+  var st=$('rs-'+r.id); if(st) st.textContent='写真を読み取っています…';
+  var msg;
+  try{
+    var ph=await toJpeg(file,900), wall=avg(ph.canvas,0.2,0.08,0.8,0.45), fl=avg(ph.canvas,0.2,0.82,0.8,0.98), light=null, ai=false, ln='';
+    if(S.set.key){try{
+      var j=await gemini(ROOMPROMPT,ph.url);
+      if(j&&isHex(j.wall_hex)&&isHex(j.floor_hex)){wall=j.wall_hex; fl=j.floor_hex; ai=true;
+        LIGHTS.forEach(function(l){if(l[0]===j.light) light=l[1];});
+        ln=light?'照明は'+j.light+'にしました。':'照明の色は写真から判断できなかったので変えていません。';}
+    }catch(_){}}
+    r.wall=wall; r.fl=fl; if(light) r.light=light;
+    msg=ai?('AIの読み取りで壁紙と床を反映しました。'+ln):'写真の上側を壁・下側を床として色を取りました（粗い目安。AI読み取りは設定でAPIキーを入れると使えます）。';
+  }catch(err){msg='写真を読み取れませんでした。';}
+  refresh(); st=$('rs-'+r.id); if(st) st.textContent=msg;
+}
+
+/* ---------- 端末間の同期（GAS経由で個人のGoogleドライブへ） ----------
+   同期の設定と状態はこの端末だけに置く（データ本体と一緒には同期しない） */
+var SK=KEY+'_sync', SY={on:false,url:'',pass:'',at:0,dirty:false,up:{}};
+try{Object.assign(SY,JSON.parse(localStorage.getItem(SK)||'{}')); SY.up=SY.up||{};}catch(e){}
+function sySave(){try{localStorage.setItem(SK,JSON.stringify(SY));}catch(e){}}
+var DEVICE=/Android/.test(navigator.userAgent)?'スマホ':((/iPad|Macintosh/.test(navigator.userAgent)&&'ontouchend' in document)?'iPad':(/iPhone/.test(navigator.userAgent)?'iPhone':'パソコン'));
+var syBusy=false, syAgain=false, pushT=0;
+function syStat(t){$('saved').textContent=t;}
+function syUi(){$('systop').classList.toggle('hide',!SY.on); $('s-url').value=SY.url||''; $('s-pass').value=SY.pass||'';}
+function markDirty(){SY.dirty=true; sySave(); if(SY.on){syStat('未同期の変更あり'); clearTimeout(pushT); pushT=setTimeout(syncNow,3000);}}
+async function gas(p){
+  p.pass=SY.pass;
+  var res=await fetch(SY.url,{method:'POST',body:JSON.stringify(p)});   /* 本文は text/plain で送る（GASはこれで受け取れる） */
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  var j=await res.json(); if(!j||(!j.ok&&!j.conflict)) throw new Error((j&&j.error)||'中継の応答が不正です');
+  return j;
+}
+async function syPush(force){
+  syStat('同期中…');
+  var ks=Object.keys(S.imgv), i, k;
+  for(i=0;i<ks.length;i++){k=ks[i]; if(SY.up[k]!==S.imgv[k]&&IMG[k]){await gas({action:'imgPut',key:k,data:IMG[k]}); SY.up[k]=S.imgv[k]; sySave();}}
+  var sent=syncStr(), r=await gas({action:'syncPut',base:SY.at,force:!!force,device:DEVICE,data:sent});
+  if(r.conflict){$('conf').classList.remove('hide'); syStat('別の端末の変更あり'); return;}
+  $('conf').classList.add('hide');
+  SY.at=r.at; SY.dirty=(syncStr()!==sent);
+  Object.keys(SY.up).forEach(function(x){if(!(x in S.imgv)){delete SY.up[x]; gas({action:'imgDel',key:x}).catch(function(){});}});
+  sySave(); syStat(SY.dirty?'未同期の変更あり':'同期済み');
+  if(SY.dirty){clearTimeout(pushT); pushT=setTimeout(syncNow,3000);}
+}
+async function syPull(always){
+  var r=await gas({action:'syncGet'});
+  if(!r.at||!r.data) return false;
+  if(r.at===SY.at&&!always){syStat('同期済み'); return true;}
+  syStat('読み込み中…');
+  var o=JSON.parse(r.data); if(!o||!o.rooms||!o.items) throw new Error('クラウドのデータを読めません');
+  var fl=S.floor; S=norm(o); if(S.floors.some(function(f){return f.id===fl;})) S.floor=fl;
+  lastStr=syncStr(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  SY.at=r.at; SY.dirty=false; sySave(); $('conf').classList.add('hide');
+  selI=selR=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); openForm(null); if(view==='2d') fitPlan(); refresh();
+  var ks=Object.keys(S.imgv), i, k, g, got=false;
+  for(i=0;i<ks.length;i++){k=ks[i]; if(SY.up[k]!==S.imgv[k]||!IMG[k]){g=await gas({action:'imgGet',key:k}); if(g.data){dbPut(k,g.data); SY.up[k]=S.imgv[k]; sySave(); got=true;}}}
+  Object.keys(IMG).forEach(function(x){if(!(x in S.imgv)){dbDel(x); delete SY.up[x]; got=true;}});
+  sySave(); if(got) refresh(); syStat('同期済み'); return true;
+}
+async function syncNow(){
+  if(!SY.on||!SY.url) return;
+  if(syBusy){syAgain=true; return;}
+  syBusy=true; clearTimeout(pushT);
+  try{
+    if(SY.dirty) await syPush(false);
+    else if(!(await syPull(false))){SY.dirty=true; await syPush(false);}
+  }catch(e){syStat('同期できませんでした（'+(e&&e.message||'通信エラー')+'）');}
+  syBusy=false; if(syAgain){syAgain=false; syncNow();}
+}
+async function syAction(a){
+  var st=$('s-sy'); SY.url=$('s-url').value.trim(); SY.pass=$('s-pass').value; sySave();
+  if(!SY.url){st.textContent='中継URLが空です。'; return;}
+  if(syBusy){st.textContent='同期の途中です。少し待ってからもう一度押してください。'; return;}
+  syBusy=true;
+  try{
+    if(a==='sytest'){st.textContent='確かめています…'; await gas({action:'ping'}); st.textContent='接続できました。';}
+    else if(a==='syup'){st.textContent='この端末のデータを送っています…'; SY.on=true; SY.at=0; SY.up={}; SY.dirty=true; sySave(); await syPush(true); st.textContent='同期を始めました。';}
+    else if(a==='sydown'){st.textContent='クラウドから読み込んでいます…'; SY.up={}; if(await syPull(true)){SY.on=true; sySave(); st.textContent='読み込んで同期を始めました。';} else st.textContent='クラウドにまだデータがありません。先にもう一方の端末で「この端末のデータで同期を始める」を押してください。';}
+    else if(a==='syuse'){await syPull(true);}
+    else if(a==='syforce'){await syPush(true);}
+  }catch(e){st.textContent='できませんでした（'+(e&&e.message||'通信エラー')+'）。URLと合言葉を確かめてください。'; if(a==='syuse'||a==='syforce') syStat('同期できませんでした');}
+  syBusy=false; syUi(); if(syAgain){syAgain=false; syncNow();}
+}
+document.addEventListener('visibilitychange',function(){if(!document.hidden) syncNow();});
+
+/* ---------- サンプル ---------- */
+function sample(){
+  function R(f,name,x,z,w,d){var r={id:nid('r'),floor:f,name:name,x:x,z:z,w:w,d:d,wall:null,fl:null,light:null,lux:50}; S.rooms.push(r); return r;}
+  function I(r,name,t,x,z,s,o){var it=Object.assign({id:nid('i'),floor:r.floor,room:r.id,name:name,t:t,p:[r.x+x,r.z+z],s:s,rot:0,y:0,st:'none',maker:'サンプル',model:'DEMO-'+S.n,bought:'',warranty:'',memo:'サンプルデータ'},o||{}); S.items.push(it);}
+  var ldk=R('f1','LDK',0,0,5.4,3.6), kt=R('f1','キッチン',5.4,0,2.7,3.6), st=R('f1','階段',0,3.6,2.7,1.8), wc=R('f1','洗面',2.7,3.6,2.7,1.8), en=R('f1','玄関',5.4,3.6,2.7,1.8);
+  var bd=R('f2','寝室',0,0,4.5,3.6), sd=R('f2','書斎',4.5,0,3.6,3.6); R('f2','階段ホール',0,3.6,2.7,1.8);
+  I(ldk,'テレビ','tv',2.7,0.3,[1.25,0.75,0.08]); I(ldk,'ソファ','sofa',2.7,2.8,[1.9,0.7,0.85],{rot:Math.PI}); I(ldk,'ローテーブル','table',2.7,1.6,[1.0,0.35,0.5]);
+  I(kt,'冷蔵庫','fridge',2.2,0.45,[0.65,1.75,0.65]); I(kt,'キッチン','counter',0.4,1.8,[1.8,0.85,0.65],{rot:Q});
+  I(st,'階段','stairs',1.35,0.9,[0.9,2.5,2.4],{rot:Q}); I(wc,'洗濯機','washer',2.2,0.45,[0.6,0.95,0.6]); I(en,'靴箱','shelf',2.35,0.9,[0.9,0.9,0.35],{rot:-Q});
+  I(bd,'ベッド','bed',1.0,1.9,[1.4,0.45,2.0],{rot:Math.PI}); I(sd,'デスク','desk',1.8,3.2,[1.4,0.72,0.6],{rot:Math.PI}); I(sd,'いす','chair',1.8,2.5,[0.5,0.85,0.5]); I(sd,'本棚','shelf',3.35,1.2,[0.9,1.6,0.4],{rot:-Q});
+}
+
+/* ---------- 操作 ---------- */
+var wipeArmed=0;
+document.addEventListener('click',function(e){
+  var t=e.target.closest('[data-a]'); if(!t||t.tagName==='INPUT') return;
+  var a=t.dataset.a, v=t.dataset.v, it, r;
+  if(a==='tab') showTab(v);
+  else if(a==='view') setView(v);
+  else if(a==='floor'){S.floor=v; selI=selR=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
+  else if(a==='mode') setMode(v);
+  else if(a==='fit'){fitPlan(); drawPlan();}
+  else if(a==='addroom'){
+    var rs=floorRooms(), last=rs[rs.length-1];
+    r={id:nid('r'),floor:S.floor,name:'部屋'+(rs.length+1),x:last?r2(last.x+last.w):0,z:last?last.z:0,w:3.6,d:2.7,wall:null,fl:null,light:null,lux:50};
+    S.rooms.push(r); selR=r.id; selI=null; setMode('select'); fitPlan(); refresh();
+  }
+  else if(a==='planoff'){imgDel('plan:'+S.floor); refresh();}
+  else if(a==='ff'){fFloor=v; renderChips(); renderList();}
+  else if(a==='sel'){selectItem(v);}
+  else if(a==='desel'){selI=selR=null; refresh();}
+  else if(a==='st'){it=item(t.dataset.id); if(it){it.st=(it.st===v?'none':v); refresh();}}
+  else if(a==='invreset'){S.items.forEach(function(i){i.st='none';}); refresh();}
+  else if(a==='rot'){it=item(selI); if(it){it.rot=((it.rot||0)+Q)%(Math.PI*2); refresh();}}
+  else if(a==='edit'){it=item(selI); if(it){openForm(it); showTab('form');}}
+  else if(a==='new'){openForm(null); showTab('form');}
+  else if(a==='delitem'){it=item(E.id); if(it){S.items=S.items.filter(function(i){return i!==it;}); imgDel(it.id); if(selI===it.id) selI=null; openForm(null); showTab('items'); refresh();}}
+  else if(a==='delroom'){r=room(selR); if(r){S.rooms=S.rooms.filter(function(x){return x!==r;}); S.items.forEach(function(i){if(i.room===r.id)i.room=null;}); selR=null; refresh();}}
+  else if(a==='rescale'){
+    r=room(selR); var real=num($('r-real').value,0.3,50);
+    if(r&&real){var k=real/r.w, f=S.floor;
+      floorRooms(f).forEach(function(x){x.x=r2(x.x*k); x.z=r2(x.z*k); x.w=r2(x.w*k); x.d=r2(x.d*k);});
+      floorItems(f).forEach(function(i){i.p=[r2(i.p[0]*k),r2(i.p[1]*k)];});
+      planCfg().wm=planCfg().wm*k; fitPlan(); fitNext=true; refresh();}
+  }
+  else if(a==='light'){r=room(t.dataset.rid); if(r){r.light=v; refresh();}}
+  else if(a==='decoreset'){r=room(t.dataset.rid); if(r){r.wall=r.fl=r.light=null; r.lux=50; refresh();}}
+  else if(a==='aitest') aiTest();
+  else if(a==='sytest'||a==='syup'||a==='sydown'||a==='syuse'||a==='syforce') syAction(a);
+  else if(a==='systop'){SY.on=false; sySave(); syUi(); $('conf').classList.add('hide'); $('s-sy').textContent='同期を止めました。データはこの端末とドライブの両方に残っています。'; syStat('保存済み（この端末）');}
+  else if(a==='export') exportData();
+  else if(a==='sample'){sample(); fitNext=true; P.fit={}; if(view==='2d') fitPlan(); $('s-etc').textContent='サンプルの家を追加しました。'; refresh();}
+  else if(a==='wipe'){
+    if(Date.now()-wipeArmed<5000){Object.keys(IMG).forEach(function(k){dbDel(k);}); var set=S.set; S=fresh(); S.set=set; selI=selR=null; fitNext=true; P.fit={}; wipeArmed=0; t.textContent='全データを消す'; $('s-etc').textContent='すべて消しました。'; openForm(null); refresh();}
+    else{wipeArmed=Date.now(); t.textContent='もう一度押すと消えます'; setTimeout(function(){if(wipeArmed){wipeArmed=0; t.textContent='全データを消す';}},5000);}
+  }
+});
+document.addEventListener('input',function(e){
+  var t=e.target, d=t.dataset;
+  if(d.rk){var r=room(d.rid); if(r){r[d.rk]=(t.type==='range'?+t.value:t.value); redraw();}}
+  else if(t.id==='q'){query=t.value.trim(); renderList();}
+});
+document.addEventListener('change',function(e){
+  var t=e.target, d=t.dataset, f, r;
+  if(d.roomphoto){f=t.files&&t.files[0]; r=room(d.roomphoto); t.value=''; if(f&&r) roomFromPhoto(r,f);}
+  else if(d.rf){r=room(selR); if(!r) return;
+    if(d.rf==='name') r.name=t.value.trim()||r.name; else {var v=num(t.value,0.3,50); if(v) r[d.rf]=v;}
+    refresh();}
+  else if(t.id==='planfile'){f=t.files&&t.files[0]; t.value=''; if(f) toJpeg(f,1600).then(function(ph){imgPut('plan:'+S.floor,ph.url); fitPlan(); refresh();}).catch(function(){});}
+  else if(t.id==='s-theme'){S.set.theme=t.value; applyTheme(); renderDeco(); redraw();}
+  else if(t.id==='s-key'){S.set.key=t.value.trim(); save();}
+  else if(t.id==='s-model'){S.set.model=t.value.trim()||'gemini-3.8-flash'; save();}
+  else if(t.id==='s-url'){SY.url=t.value.trim(); sySave();}
+  else if(t.id==='s-pass'){SY.pass=t.value; sySave();}
+  else if(t.id==='s-import'){f=t.files&&t.files[0]; t.value=''; if(f) importData(f);}
+});
+function applyTheme(){var th=S.set.theme; if(th==='light'||th==='dark') document.documentElement.setAttribute('data-theme',th); else document.documentElement.removeAttribute('data-theme');}
+async function aiTest(){
+  var st=$('s-ai'); S.set.key=$('s-key').value.trim(); S.set.model=$('s-model').value.trim()||'gemini-3.8-flash'; save();
+  if(!S.set.key){st.textContent='APIキーが空です。'; return;}
+  st.textContent='確かめています…';
+  try{
+    var res=await fetch(API+'?pageSize=200',{headers:{'x-goog-api-key':S.set.key}});
+    if(!res.ok){st.textContent='接続できませんでした（HTTP '+res.status+'）。キーを確かめてください。'; return;}
+    var j=await res.json(), names=(j.models||[]).filter(function(m){return (m.supportedGenerationMethods||[]).indexOf('generateContent')>=0;}).map(function(m){return m.name.replace(/^models\//,'');});
+    $('models').innerHTML=names.map(function(n){return '<option value="'+esc(n)+'">';}).join('');
+    st.textContent='接続できました。'+(names.indexOf(S.set.model)>=0?'モデル「'+S.set.model+'」は使えます。':'ただしモデル「'+S.set.model+'」は一覧にありません。モデル名の欄から選び直してください（'+names.length+'件）。');
+  }catch(err){st.textContent='接続できませんでした（通信エラー）。';}
+}
+function exportData(){
+  try{
+    var c=JSON.parse(JSON.stringify(S)); c.set.key='';
+    var blob=new Blob([JSON.stringify({app:'ie-no-kiroku',v:1,S:c,IMG:IMG})],{type:'application/json'}), a=document.createElement('a'), d=new Date();
+    a.href=URL.createObjectURL(blob); a.download='ie-no-kiroku-'+d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'.json';
+    document.body.appendChild(a); a.click(); a.remove(); $('s-bk').textContent='書き出しました。';
+  }catch(e){$('s-bk').textContent='書き出せませんでした。';}
+}
+function importData(file){
+  var fr=new FileReader();
+  fr.onload=function(){
+    try{
+      var j=JSON.parse(fr.result); if(!j||j.app!=='ie-no-kiroku'||!j.S||!j.S.rooms||!j.S.items) throw new Error('format');
+      var key=S.set.key; Object.keys(IMG).forEach(function(k){dbDel(k);}); S=norm(j.S); S.set.key=key; S.imgv={};
+      Object.keys(j.IMG||{}).forEach(function(k){imgPut(k,j.IMG[k]);});
+      selI=selR=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); if(view==='2d') fitPlan(); openForm(null); refresh(); $('s-bk').textContent='読み込みました。';
+    }catch(e){$('s-bk').textContent='このファイルは読み込めませんでした。家の記録で書き出したファイルを選んでください。';}
+  };
+  fr.readAsText(file);
+}
+function syncSettings(){$('s-theme').value=S.set.theme||'auto'; $('s-key').value=S.set.key||''; $('s-model').value=S.set.model||'gemini-3.8-flash';}
+
+/* ---------- 起動 ---------- */
+applyTheme(); syncSettings(); syUi(); syStat(SY.on?'同期の確認中…':'保存済み（この端末）');
+try{init3D();}catch(err){T=null; $('no3d').style.display='flex';}
+initPlan(); openForm(null);
+new MutationObserver(function(){redraw();}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+refresh();
+dbOpen().then(function(){refresh(); syncNow();});
+})();
+</script>
+</body>
+</html>
