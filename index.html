@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v1.6.0
+/* 家の記録 v2.0.0
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -155,6 +155,15 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
 .sec{margin-top:8px}
 .conf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);border-left:3px solid var(--warn);font-size:13px}
 .stat{font-size:12px;color:var(--muted);min-height:1.4em}
+.pad{position:absolute;right:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,46px);grid-auto-rows:46px;gap:4px;touch-action:none;user-select:none;-webkit-user-select:none}
+.pad button{border:1px solid var(--line);background:var(--surface);border-radius:8px;font-size:18px;opacity:.9;touch-action:none}
+.deco .lux2{grid-column:2/-1}
+@media (max-width:819px){
+  body.ed main{grid-template-rows:minmax(300px,64%) minmax(0,1fr)}
+  .tbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .tbar>*{flex:none}
+}
+.rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -177,18 +186,16 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
     </div>
     <div class="msg" id="no3d"><div>この端末では3D表示を読み込めませんでした。「間取り」とリストは使えます。</div></div>
     <div class="top">
-      <div class="seg" id="viewseg">
-        <button data-a="view" data-v="3d" aria-pressed="true">3D</button>
-        <button data-a="view" data-v="2d" aria-pressed="false">間取り</button>
-      </div>
-      <button class="btn sm" data-a="undo" id="undo" disabled>↶ 元に戻す</button>
+      <div class="seg" id="viewseg"><button data-a="view" data-v="3d" aria-pressed="true">3D</button><button data-a="view" data-v="2d" aria-pressed="false">間取り</button></div>
+      <button class="btn sm" data-a="undo" id="undo" disabled aria-label="元に戻す">↶ 戻す</button>
+      <button class="btn sm" data-a="redo" id="redo" disabled aria-label="やり直す">↷ やり直す</button>
       <span class="grow"></span>
+      <div class="seg" id="v3seg"><button data-a="v3" data-v="cut">俯瞰</button><button data-a="v3" data-v="full">実寸</button><button data-a="v3" data-v="walk">歩く</button></div>
       <div class="seg" id="floorseg"></div>
       <div class="tbar hide" id="tbar">
         <button class="btn sm" data-a="mode" data-v="select" aria-pressed="true">選ぶ・動かす</button>
-        <button class="btn sm" data-a="mode" data-v="draw" aria-pressed="false">部屋を描く</button>
-        <button class="btn sm" data-a="addroom">＋部屋</button>
-        <button class="btn sm" data-a="mode" data-v="wall" aria-pressed="false">＋壁</button>
+        <button class="btn sm" data-a="mode" data-v="wall" aria-pressed="false">壁を引く</button>
+        <button class="btn sm" data-a="mode" data-v="rect" aria-pressed="false">四角い部屋</button>
         <button class="btn sm" data-a="mode" data-v="gap" aria-pressed="false">壁を消す</button>
         <button class="btn sm" data-a="mode" data-v="door" aria-pressed="false">＋ドア</button>
         <button class="btn sm" data-a="mode" data-v="slide" aria-pressed="false">＋引き戸</button>
@@ -201,6 +208,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
       </div>
     </div>
     <div class="pstat hide" id="pstat" role="status"></div>
+    <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
     <div class="card" id="rcard"></div>
     <div class="card" id="detail"></div>
   </section>
@@ -230,6 +238,11 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <div class="pickrow">
           <label class="filebtn"><input type="file" accept="image/*" id="f-file"><span class="btn pri">写真を選ぶ</span></label>
           <span class="rs">写真から種類・サイズ・色を読み取ります</span>
+        </div>
+        <div class="pickrow">
+          <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
+          <button class="btn sm hide" type="button" id="f-glboff" data-a="glboff">3Dモデルを外す</button>
+          <span class="rs" id="f-glbstat" role="status"></span>
         </div>
         <p class="note" id="f-note" role="status"></p>
         <div class="topr">
@@ -297,13 +310,20 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <span class="rs" id="s-bk" role="status"></span>
         </div>
 
+        <h3>モデルデータの取り込み</h3>
+        <p class="lead">Claudeのチャットで間取り図や写真から作ってもらったモデルデータ（.json）を取り込みます。ファイルに入っている階の間取りが置き換わります。合わなければ「戻す」で戻せます。</p>
+        <div class="pickrow">
+          <label class="filebtn"><input type="file" accept="application/json,.json" id="s-mimport"><span class="btn">モデルデータを取り込む</span></label>
+          <span class="rs" id="s-mi" role="status"></span>
+        </div>
+
         <h3>その他</h3>
         <div class="pickrow">
           <button class="btn" data-a="sample">サンプルの家を入れる</button>
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v1.6.0</p>
+        <p class="lead sec">家の記録 v2.0.0</p>
       </div>
     </div>
   </section>
@@ -313,12 +333,29 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
 <script>
 (function(){
 'use strict';
-var KEY='ie-no-kiroku-v1', WH=1.2, Q=Math.PI/2;
-var TYPES={box:'その他（箱）',fridge:'冷蔵庫',tv:'テレビ・モニター',sofa:'ソファ',bed:'ベッド',table:'テーブル',desk:'デスク',chair:'いす',shelf:'棚',washer:'洗濯機',aircon:'エアコン',microwave:'電子レンジ',counter:'キッチン・カウンター',stairs:'階段'};
-var DEF={box:[40,50,40],fridge:[60,170,65],tv:[110,65,6],sofa:[180,70,85],bed:[100,45,200],table:[100,70,60],desk:[120,72,60],chair:[45,85,45],shelf:[80,150,35],washer:[60,95,60],aircon:[80,28,25],microwave:[48,30,38],counter:[180,85,65],stairs:[90,250,240]};
+/* =====================================================================
+   家の記録 v2
+   データの持ち方: 壁（自由な角度の線分）が土台。閉じた壁の囲みを「部屋」として自動で見つける。
+   ドア・窓・開口はすべて壁に付く。長さの単位はメートル。x=右、z=手前（間取り図の下）。
+
+   ■ 取り込み用モデルデータ（設定 → モデルデータを取り込む）の形式
+   { "app":"ie-no-kiroku-model", "v":1, "mode":"replace"（含まれる階を置き換え）か "add"（追加）,
+     "floors":{ "f1":{
+        "walls":[ {"a":[x,z],"b":[x,z],"h":2.4,"t":0.1,
+                   "ops":[{"kind":"door|slide|window|gap","pos":壁のa端からの距離,"w":幅,"hinge":"a|b","out":false,"sill":下端,"top":上端}]} ],
+        "rooms":[ {"name":"LDK","at":[x,z]（部屋の中の1点）,"floor":"plain|wood|tatami|tile","floorColor":"#rrggbb","wallColor":"#rrggbb","light":"#rrggbb","lux":50} ],
+        "items":[ {"name":"冷蔵庫","t":種類,"at":[x,z],"size":[幅,高さ,奥行],"rot":角度(度),"y":床からの高さ,"color":"#rrggbb","maker":"","model":"","memo":""} ]
+     }, "f2":{...} } }
+   ===================================================================== */
+var KEY='ie-no-kiroku-v1', WALLH=2.4, WALLT=0.1, CUT=1.2, Q=Math.PI/2, EPS=0.02;
+var TYPES={box:'その他（箱）',fridge:'冷蔵庫',tv:'テレビ・モニター',sofa:'ソファ',bed:'ベッド',table:'テーブル',desk:'デスク',chair:'いす',shelf:'棚',washer:'洗濯機',aircon:'エアコン',microwave:'電子レンジ',counter:'キッチン・カウンター',stairs:'階段',toilet:'トイレ',bath:'浴槽',basin:'洗面台'};
+var DEF={box:[40,50,40],fridge:[60,170,65],tv:[110,65,6],sofa:[180,70,85],bed:[100,45,200],table:[100,70,60],desk:[120,72,60],chair:[45,85,45],shelf:[80,150,35],washer:[60,95,60],aircon:[80,28,25],microwave:[48,30,38],counter:[180,85,65],stairs:[90,250,240],toilet:[40,80,70],bath:[75,55,120],basin:[75,85,50]};
 var TOPPHOTO={table:1,desk:1,bed:1,counter:1};
 var ST={ok:'確認済み',none:'未確認',missing:'見つからない'}, STMARK={ok:'✓ ',none:'',missing:'! '};
 var LIGHTS=[['電球色','#FFC98A'],['温白色','#FFE2C0'],['昼白色','#FFF6EC'],['昼光色','#EAF2FF']];
+var FLOORK={plain:'無地',wood:'フローリング',tatami:'畳',tile:'タイル'};
+var OPK={door:'ドア（開き戸）',slide:'引き戸',window:'窓',gap:'壁なし（開口）'};
+var OPDEF={door:{w:0.8,sill:0,top:2.0},slide:{w:0.9,sill:0,top:2.0},window:{w:1.2,sill:0.9,top:2.0},gap:{w:0.9,sill:0,top:0}};
 
 var $=function(id){return document.getElementById(id);};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -327,88 +364,195 @@ function isHex(v){return typeof v==='string'&&/^#[0-9a-fA-F]{6}$/.test(v);}
 function num(v,lo,hi){v=parseFloat(String(v).replace(',','.')); return isFinite(v)?Math.max(lo,Math.min(hi,v)):null;}
 function snap(v){return Math.round(v*20)/20;}
 function r2(v){return Math.round(v*100)/100;}
+function r3(v){return Math.round(v*1000)/1000;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 
 /* ---------- データ ---------- */
-function fresh(){return {v:1,n:1,floor:'f1',floors:[{id:'f1',name:'1階'},{id:'f2',name:'2階'}],rooms:[],items:[],plans:{},imgv:{},ops:[],walls:[],set:{key:'',model:'gemini-3.8-flash',theme:'auto'}};}
+function fresh(){return {v:2,n:1,floor:'f1',floors:[{id:'f1',name:'1階'},{id:'f2',name:'2階'}],walls:[],ops:[],rooms:[],items:[],plans:{},imgv:{},set:{key:'',model:'gemini-3.8-flash',theme:'auto',view3:'cut'}};}
 var S=fresh();
-function norm(o){var b=fresh(); o.set=Object.assign(b.set,o.set||{}); o.plans=o.plans||{}; o.imgv=o.imgv||{}; o.ops=o.ops||[]; o.walls=o.walls||[]; o.floors=(o.floors&&o.floors.length)?o.floors:b.floors; o.n=o.n||1; if(!o.floors.some(function(f){return f.id===o.floor;})) o.floor=o.floors[0].id; return o;}
-try{var raw=localStorage.getItem(KEY); if(raw){var o=JSON.parse(raw); if(o&&o.v===1&&o.rooms&&o.items) S=norm(o);}}catch(e){}
-/* 同期で比べる中身（今どの階を見ているかは端末ごとなので含めない） */
-function syncStr(){var f=S.floor; S.floor=''; var t=JSON.stringify(S); S.floor=f; return t;}
-var saveT=0, lastStr=syncStr(), HIST=[];
-function commit(){
-  clearTimeout(saveT);
-  var ok=true; try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){ok=false;}
-  var t=syncStr(); if(t!==lastStr){HIST.push(lastStr); if(HIST.length>40) HIST.shift(); lastStr=t; markDirty(); undoUi();}
-  if(!ok) $('saved').textContent='保存できませんでした'; else if(!SY.on) $('saved').textContent='保存済み（この端末）';
-}
-function save(){clearTimeout(saveT); saveT=setTimeout(commit,300);}
-function undoUi(){$('undo').disabled=!HIST.length;}
-/* 元に戻す: 直前の状態（間取り・物・内装・ドアや窓）に1つ戻る。消した写真そのものは戻らない */
-function undo(){
-  commit(); if(!HIST.length) return;
-  var prev=HIST.pop(), fl=S.floor;
-  try{S=norm(JSON.parse(prev));}catch(e){return;}
-  if(S.floors.some(function(f){return f.id===fl;})) S.floor=fl;
-  Object.keys(S.imgv).forEach(function(k){if(!IMG[k]) delete S.imgv[k];});
-  lastStr=syncStr(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
-  markDirty(); undoUi();
-  if(selI&&!item(selI)) selI=null; if(selR&&!room(selR)) selR=null; if(selO&&!op(selO)) selO=null; if(selW&&!fwall(selW)) selW=null; selW=null;
-  applyTheme(); syncSettings(); refresh();
-}
 function nid(p){return p+(S.n++);}
-function room(id){for(var i=0;i<S.rooms.length;i++)if(S.rooms[i].id===id)return S.rooms[i];return null;}
-function item(id){for(var i=0;i<S.items.length;i++)if(S.items[i].id===id)return S.items[i];return null;}
-function floorName(id){for(var i=0;i<S.floors.length;i++)if(S.floors[i].id===id)return S.floors[i].name;return '';}
-function floorRooms(f){f=f||S.floor;return S.rooms.filter(function(r){return r.floor===f;});}
-function floorItems(f){f=f||S.floor;return S.items.filter(function(i){return i.floor===f;});}
-function roomAt(f,x,z){var rs=floorRooms(f);for(var i=rs.length-1;i>=0;i--){var r=rs[i];if(x>=r.x&&x<=r.x+r.w&&z>=r.z&&z<=r.z+r.d)return r;}return null;}
-/* ドア・窓: 部屋の壁（n=奥 s=手前 w=左 e=右）に付く。pos=壁の端から中心までの距離 */
-function op(id){for(var i=0;i<S.ops.length;i++)if(S.ops[i].id===id)return S.ops[i];return null;}
-function r3(v){return Math.round(v*1000)/1000;}
-function fwall(id){for(var i=0;i<S.walls.length;i++)if(S.walls[i].id===id)return S.walls[i];return null;}
+function byId(a,id){for(var i=0;i<a.length;i++)if(a[i].id===id)return a[i];return null;}
+function wall(id){return byId(S.walls,id);} function op(id){return byId(S.ops,id);} function room(id){return byId(S.rooms,id);} function item(id){return byId(S.items,id);}
+function floorName(id){var f=byId(S.floors,id);return f?f.name:'';}
 function floorWalls(f){f=f||S.floor;return S.walls.filter(function(w){return w.floor===f;});}
-/* ドア・窓・開口が付いている壁（部屋の辺 か 自分で足した壁） */
-function host(o){
-  if(o.wall){var fw=fwall(o.wall); if(!fw) return null; var hz=Math.abs(fw.z2-fw.z1)<0.001;
-    return {h:hz,c:hz?fw.z1:fw.x1,st:hz?Math.min(fw.x1,fw.x2):Math.min(fw.z1,fw.z2),len:Math.abs(hz?fw.x2-fw.x1:fw.z2-fw.z1),dir:1,hh:fw.h||WH,floor:fw.floor};}
-  var r=room(o.room); if(!r) return null; var h=(o.side==='n'||o.side==='s');
-  return {h:h,c:o.side==='n'?r.z:(o.side==='s'?r.z+r.d:(o.side==='w'?r.x:r.x+r.w)),st:h?r.x:r.z,len:h?r.w:r.d,dir:(o.side==='n'||o.side==='w')?1:-1,hh:r.wh||WH,floor:r.floor};
+function floorItems(f){f=f||S.floor;return S.items.filter(function(i){return i.floor===f;});}
+function floorOps(f){f=f||S.floor;return S.ops.filter(function(o){var w=wall(o.wall);return w&&w.floor===f;});}
+function liveRooms(f){f=f||S.floor;var g=GEO[f];return g?g.faces.map(function(fc){return fc.room;}).filter(Boolean):[];}
+
+/* ---------- 壁の幾何 ---------- */
+function wlen(w){return Math.hypot(w.x2-w.x1,w.z2-w.z1);}
+function wpt(w,d){var L=wlen(w)||1;return {x:w.x1+(w.x2-w.x1)*d/L,z:w.z1+(w.z2-w.z1)*d/L};}
+function lineT(w,x,z){var dx=w.x2-w.x1,dz=w.z2-w.z1,l2=dx*dx+dz*dz||1,t=((x-w.x1)*dx+(z-w.z1)*dz)/l2;return {t:t,d:Math.hypot(x-(w.x1+dx*t),z-(w.z1+dz*t))};}
+function segD(w,x,z){var t=clamp(lineT(w,x,z).t,0,1);return {t:t,d:Math.hypot(x-(w.x1+(w.x2-w.x1)*t),z-(w.z1+(w.z2-w.z1)*t))};}
+function segX(a,b){
+  var d1x=a.x2-a.x1,d1z=a.z2-a.z1,d2x=b.x2-b.x1,d2z=b.z2-b.z1,den=d1x*d2z-d1z*d2x; if(Math.abs(den)<1e-9) return null;
+  var t=((b.x1-a.x1)*d2z-(b.z1-a.z1)*d2x)/den,u=((b.x1-a.x1)*d1z-(b.z1-a.z1)*d1x)/den;
+  return (t>-1e-6&&t<1+1e-6&&u>-1e-6&&u<1+1e-6)?t:null;
 }
-function opSeg(o){
-  var H=host(o); if(!H) return null; var w=Math.min(o.w,H.len), pos=Math.max(w/2,Math.min(H.len-w/2,o.pos));
-  return {h:H.h,c:H.c,a:H.st+pos-w/2,b:H.st+pos+w/2,kind:o.kind,id:o.id,dir:H.dir,hh:H.hh};
+function inPoly(p,x,z){var c=false;for(var i=0,j=p.length-1;i<p.length;j=i++){if((p[i].z>z)!==(p[j].z>z)&&x<(p[j].x-p[i].x)*(z-p[i].z)/(p[j].z-p[i].z)+p[i].x)c=!c;}return c;}
+function polyArea(p){var a=0;for(var i=0;i<p.length;i++){var q=p[(i+1)%p.length];a+=p[i].x*q.z-q.x*p[i].z;}return a/2;}
+function polyInner(p){
+  var a=polyArea(p)||1,cx=0,cz=0,i,q,f;
+  for(i=0;i<p.length;i++){q=p[(i+1)%p.length];f=p[i].x*q.z-q.x*p[i].z;cx+=(p[i].x+q.x)*f;cz+=(p[i].z+q.z)*f;}
+  cx/=6*a;cz/=6*a; if(inPoly(p,cx,cz)) return {x:cx,z:cz};
+  for(i=0;i<p.length;i++){q=p[(i+2)%p.length];var mx=(p[i].x+q.x)/2,mz=(p[i].z+q.z)/2;if(inPoly(p,mx,mz))return {x:mx,z:mz};}
+  return {x:cx,z:cz};
 }
-function floorOps(f){f=f||S.floor;return S.ops.filter(function(o){var H=host(o);return H&&H.floor===f;});}
-function offSegs(f){
-  var a=[]; floorRooms(f).forEach(function(r){var o=r.off||{};
-    if(o.n) a.push({h:true,c:r.z,a:r.x,b:r.x+r.w,kind:'gap'}); if(o.s) a.push({h:true,c:r.z+r.d,a:r.x,b:r.x+r.w,kind:'gap'});
-    if(o.w) a.push({h:false,c:r.x,a:r.z,b:r.z+r.d,kind:'gap'}); if(o.e) a.push({h:false,c:r.x+r.w,a:r.z,b:r.z+r.d,kind:'gap'});});
-  return a;
+
+/* 壁の線を交点・T字で区切り、囲まれた面（＝部屋）を見つける */
+var GEO={};
+function arrange(f){
+  var ws=floorWalls(f), nodes={}, edges={}, splits={};
+  function key(x,z){return Math.round(x*50)+','+Math.round(z*50);}
+  ws.forEach(function(w){
+    var L=wlen(w); if(L<0.01){splits[w.id]=[0,L];return;}
+    var ts=[];
+    ws.forEach(function(o){
+      if(o===w) return;
+      [[o.x1,o.z1],[o.x2,o.z2]].forEach(function(p){var q=segD(w,p[0],p[1]); if(q.d<EPS) ts.push(q.t);});
+      var t=segX(w,o); if(t!=null) ts.push(t);
+    });
+    ts.sort(function(a,b){return a-b;});
+    var sp=[0],tol=0.03/L; ts.forEach(function(t){if(t>tol&&t<1-tol&&t-sp[sp.length-1]>tol) sp.push(t);}); sp.push(1);
+    splits[w.id]=sp.map(function(t){return t*L;});
+    for(var i=0;i<sp.length-1;i++){
+      var A=wpt(w,sp[i]*L),B=wpt(w,sp[i+1]*L),ka=key(A.x,A.z),kb=key(B.x,B.z); if(ka===kb) continue;
+      if(!nodes[ka]) nodes[ka]={x:A.x,z:A.z,k:ka,out:[]}; if(!nodes[kb]) nodes[kb]={x:B.x,z:B.z,k:kb,out:[]};
+      var ek=ka<kb?ka+'|'+kb:kb+'|'+ka; if(!edges[ek]) edges[ek]=[ka,kb];
+    }
+  });
+  Object.keys(edges).forEach(function(k){
+    var a=nodes[edges[k][0]],b=nodes[edges[k][1]];
+    a.out.push({to:b.k,ang:Math.atan2(b.z-a.z,b.x-a.x)}); b.out.push({to:a.k,ang:Math.atan2(a.z-b.z,a.x-b.x)});
+  });
+  Object.keys(nodes).forEach(function(k){nodes[k].out.sort(function(p,q){return p.ang-q.ang;});});
+  var seen={}, faces=[];
+  Object.keys(nodes).forEach(function(k){
+    nodes[k].out.forEach(function(e0){
+      if(seen[k+'>'+e0.to]) return;
+      var u=k,v=e0.to,poly=[],guard=0;
+      while(!seen[u+'>'+v]&&guard++<5000){
+        seen[u+'>'+v]=1; poly.push(nodes[u]);
+        var outs=nodes[v].out,idx=0; for(var i=0;i<outs.length;i++) if(outs[i].to===u){idx=i;break;}
+        var nx=outs[(idx+outs.length-1)%outs.length]; u=v; v=nx.to;
+      }
+      /* 行き止まりの壁（A→B→A）を面の輪郭から取り除く */
+      var ch=true; while(ch&&poly.length>2){ch=false; for(var j=0;j<poly.length;j++){var a=poly[(j+poly.length-1)%poly.length],c=poly[(j+1)%poly.length]; if(a===c){poly.splice(j,1); poly.splice(j%poly.length,1); ch=true; break;}}}
+      if(poly.length<3) return;
+      var ar=polyArea(poly); if(ar*FACESIGN<0.3) return;
+      faces.push({poly:poly.map(function(n){return {x:n.x,z:n.z};}),area:Math.abs(ar),room:null});
+    });
+  });
+  /* 面と、保存してある部屋（名前・内装）を結び付ける */
+  var rs=S.rooms.filter(function(r){return r.floor===f;}), used={};
+  faces.forEach(function(fc){
+    for(var i=0;i<rs.length;i++){if(!used[rs[i].id]&&inPoly(fc.poly,rs[i].cx,rs[i].cz)){fc.room=rs[i]; used[rs[i].id]=1; break;}}
+  });
+  var n=rs.length;
+  faces.forEach(function(fc){
+    var c=polyInner(fc.poly); fc.c=c;
+    if(!fc.room){fc.room={id:nid('r'),floor:f,name:'部屋'+(++n),cx:c.x,cz:c.z,fl:null,fk:'plain',wall:null,light:null,lux:50}; S.rooms.push(fc.room); used[fc.room.id]=1;}
+    fc.room.cx=r2(c.x); fc.room.cz=r2(c.z);
+  });
+  /* 囲みが無くなった部屋のうち、何も設定していないものは片付ける */
+  S.rooms=S.rooms.filter(function(r){return r.floor!==f||used[r.id]||!(/^部屋\d+$/.test(r.name)&&!r.fl&&!r.wall&&!r.light&&(!r.fk||r.fk==='plain'));});
+  GEO[f]={faces:faces,splits:splits};
 }
-/* いちばん近い壁（部屋の辺・足した壁）と、その上のいちばん近い点 */
+var FACESIGN=1; /* この向きでたどると、内側の面の面積が正になる */
+function arrangeAll(){S.floors.forEach(function(f){arrange(f.id);});}
+function faceAt(f,x,z){var g=GEO[f]; if(!g) return null; for(var i=0;i<g.faces.length;i++) if(inPoly(g.faces[i].poly,x,z)) return g.faces[i]; return null;}
+function roomAt(f,x,z){var fc=faceAt(f,x,z); return fc?fc.room:null;}
+function roomOf(it){return roomAt(it.floor,it.p[0],it.p[1]);}
+function faceOf(r){var g=GEO[r.floor]; if(!g) return null; for(var i=0;i<g.faces.length;i++) if(g.faces[i].room===r) return g.faces[i]; return null;}
+function place(it){var r=roomOf(it);return (floorName(it.floor)||'')+' '+(r?r.name:'部屋の外');}
+function fp(it){var k=Math.abs(Math.round((it.rot||0)/Q))%2;return k?[it.s[2],it.s[0]]:[it.s[0],it.s[2]];}
+
+/* 壁を足す。すでにある壁と同じ線上で重なる部分は足さない */
+function addWall(f,x1,z1,x2,z2,h,t){
+  var nw={x1:x1,z1:z1,x2:x2,z2:z2}, L=wlen(nw), segs=[[0,1]], made=[]; if(L<0.05) return made;
+  floorWalls(f).forEach(function(o){
+    var a=lineT(nw,o.x1,o.z1), b=lineT(nw,o.x2,o.z2); if(a.d>EPS||b.d>EPS) return;
+    var t0=Math.min(a.t,b.t), t1=Math.max(a.t,b.t), out=[];
+    segs.forEach(function(s){if(t1<=s[0]||t0>=s[1]){out.push(s);return;} if(t0>s[0]) out.push([s[0],t0]); if(t1<s[1]) out.push([t1,s[1]]);});
+    segs=out;
+  });
+  segs.forEach(function(s){
+    if((s[1]-s[0])*L<0.05) return;
+    var A=wpt(nw,s[0]*L), B=wpt(nw,s[1]*L), w={id:nid('w'),floor:f,x1:r3(A.x),z1:r3(A.z),x2:r3(B.x),z2:r3(B.z),h:h||WALLH,t:t||WALLT};
+    S.walls.push(w); made.push(w);
+  });
+  return made;
+}
+function delWall(id){S.walls=S.walls.filter(function(w){return w.id!==id;}); S.ops=S.ops.filter(function(o){return o.wall!==id;});}
+/* 同じ点につながっている壁の端をまとめて動かす */
+function moveNode(f,ox,oz,nx,nz){
+  floorWalls(f).forEach(function(w){
+    if(Math.hypot(w.x1-ox,w.z1-oz)<EPS){w.x1=nx; w.z1=nz;}
+    if(Math.hypot(w.x2-ox,w.z2-oz)<EPS){w.x2=nx; w.z2=nz;}
+  });
+}
+function tidyWalls(){
+  var dead={}; S.walls.forEach(function(w){if(wlen(w)<0.05) dead[w.id]=1;});
+  S.walls=S.walls.filter(function(w){return !dead[w.id];}); S.ops=S.ops.filter(function(o){return wall(o.wall);});
+}
 function nearWall(f,x,z,maxd){
   var best=null;
-  function chk(h,c,a,b,extra){
-    var al=h?x:z, pr=h?z:x, cl=Math.max(a,Math.min(b,al)), d=Math.hypot(al-cl,pr-c);
-    if(d<=maxd&&(!best||d<best.d)){best={d:d,h:h,c:c,st:a,len:b-a,pos:cl-a,px:h?cl:c,pz:h?c:cl}; for(var k in extra) best[k]=extra[k];}
-  }
-  floorRooms(f).forEach(function(r){chk(true,r.z,r.x,r.x+r.w,{r:r,side:'n'}); chk(true,r.z+r.d,r.x,r.x+r.w,{r:r,side:'s'}); chk(false,r.x,r.z,r.z+r.d,{r:r,side:'w'}); chk(false,r.x+r.w,r.z,r.z+r.d,{r:r,side:'e'});});
-  floorWalls(f).forEach(function(fw){if(Math.abs(fw.z2-fw.z1)<0.001) chk(true,fw.z1,Math.min(fw.x1,fw.x2),Math.max(fw.x1,fw.x2),{fw:fw}); else chk(false,fw.x1,Math.min(fw.z1,fw.z2),Math.max(fw.z1,fw.z2),{fw:fw});});
+  floorWalls(f).forEach(function(w){var q=segD(w,x,z); if(q.d<=maxd&&(!best||q.d<best.d)){var L=wlen(w); best={d:q.d,w:w,pos:q.t*L,len:L,px:w.x1+(w.x2-w.x1)*q.t,pz:w.z1+(w.z2-w.z1)*q.t};}});
   return best;
 }
-function wallLen(fw,len){len=r2(Math.max(0.3,Math.min(50,len))); if(Math.abs(fw.z2-fw.z1)<0.001) fw.x2=r2(fw.x1+len); else fw.z2=r2(fw.z1+len);}
-function mkOp(n,kind,pos,w){
-  w=Math.max(0.2,Math.min(w,n.len));
-  var o={id:nid('o'),kind:kind,w:r3(w),pos:r3(Math.max(w/2,Math.min(n.len-w/2,pos)))};
-  if(n.fw) o.wall=n.fw.id; else{o.room=n.r.id; o.side=n.side;}
-  S.ops.push(o); return o;
+function nearNode(f,x,z,maxd,skip){
+  var best=null;
+  floorWalls(f).forEach(function(w){
+    if(skip&&skip[w.id]) return;
+    [[w.x1,w.z1],[w.x2,w.z2]].forEach(function(p){var d=Math.hypot(p[0]-x,p[1]-z); if(d<=maxd&&(!best||d<best.d)) best={d:d,x:p[0],z:p[1]};});
+  });
+  return best;
 }
-function addOp(f,x,z,kind,w,maxd){var n=nearWall(f,x,z,maxd); return n?mkOp(n,kind,n.pos,Math.max(0.4,w)):null;}
-function fp(it){var k=Math.abs(Math.round((it.rot||0)/Q))%2;return k?[it.s[2],it.s[0]]:[it.s[0],it.s[2]];}
-function place(it){var r=it.room&&room(it.room);return (floorName(it.floor)||'')+(r?' '+r.name:' 部屋の外');}
 
-/* 写真は IndexedDB（使えない端末ではこの画面を開いている間だけ保持） */
+/* ---------- ドア・窓・開口 ---------- */
+function opSpan(o){
+  var w=wall(o.wall); if(!w) return null; var L=wlen(w), ww=Math.min(o.w,L), pos=clamp(o.pos,ww/2,L-ww/2);
+  return {w:w,L:L,a:pos-ww/2,b:pos+ww/2,sill:o.kind==='window'?(o.sill==null?0.9:o.sill):0,top:o.kind==='gap'?(o.top||99):(o.top||2.0)};
+}
+function mkOp(w,kind,pos,width){
+  var d=OPDEF[kind]||OPDEF.door, L=wlen(w), ww=clamp(width||d.w,0.2,L);
+  var o={id:nid('o'),wall:w.id,kind:kind,w:r3(ww),pos:r3(clamp(pos,ww/2,L-ww/2)),sill:d.sill,top:d.top}; S.ops.push(o); return o;
+}
+function addOp(f,x,z,kind,width,maxd){var n=nearWall(f,x,z,maxd); return n?mkOp(n.w,kind,n.pos,width):null;}
+
+/* ---------- v1（四角い部屋）からの移行 ---------- */
+function migrate(o){
+  var keep=S, n=fresh(); S=n;
+  n.n=o.n||1; n.floors=(o.floors&&o.floors.length)?o.floors:n.floors; n.floor=o.floor||'f1'; n.plans=o.plans||{}; n.imgv=o.imgv||{};
+  n.set=Object.assign(n.set,o.set||{}); n.items=(o.items||[]).map(function(i){delete i.room; return i;});
+  var sideWall={};
+  (o.rooms||[]).forEach(function(r){
+    var h=Math.max(r.wh||0,WALLH), c=[[r.x,r.z,r.x+r.w,r.z,'n'],[r.x,r.z+r.d,r.x+r.w,r.z+r.d,'s'],[r.x,r.z,r.x,r.z+r.d,'w'],[r.x+r.w,r.z,r.x+r.w,r.z+r.d,'e']];
+    c.forEach(function(q){addWall(r.floor,q[0],q[1],q[2],q[3],h,WALLT);});
+    n.rooms.push({id:r.id,floor:r.floor,name:r.name,cx:r2(r.x+r.w/2),cz:r2(r.z+r.d/2),fl:r.fl||null,fk:'plain',wall:r.wall||null,light:r.light||null,lux:r.lux==null?50:r.lux});
+    c.forEach(function(q){if(r.off&&r.off[q[4]]){var m=nearWall(r.floor,(q[0]+q[2])/2,(q[1]+q[3])/2,0.05); if(m) mkOp(m.w,'gap',m.pos,Math.hypot(q[2]-q[0],q[3]-q[1]));}});
+    sideWall[r.id]=c;
+  });
+  (o.walls||[]).forEach(function(w){if(w.x1!=null&&w.floor) addWall(w.floor,w.x1,w.z1,w.x2,w.z2,Math.max(w.h||0,WALLH),WALLT);});
+  (o.ops||[]).forEach(function(p){
+    var x,z,f;
+    if(p.wall){var fw=byId(o.walls||[],p.wall); if(!fw) return; var hz=Math.abs(fw.z2-fw.z1)<0.001; f=fw.floor; x=hz?Math.min(fw.x1,fw.x2)+p.pos:fw.x1; z=hz?fw.z1:Math.min(fw.z1,fw.z2)+p.pos;}
+    else{var r=byId(o.rooms||[],p.room); if(!r) return; f=r.floor;
+      if(p.side==='n'||p.side==='s'){x=r.x+p.pos; z=p.side==='n'?r.z:r.z+r.d;} else{z=r.z+p.pos; x=p.side==='w'?r.x:r.x+r.w;}}
+    var m=nearWall(f,x,z,0.06); if(!m) return;
+    var q=mkOp(m.w,p.kind||'door',m.pos,p.w); q.hinge=p.hinge; q.out=!!p.out;
+  });
+  S=keep; return n;
+}
+function norm(o){
+  if(o&&o.v===1) o=migrate(o);
+  var b=fresh(); o.v=2; o.set=Object.assign(b.set,o.set||{}); o.plans=o.plans||{}; o.imgv=o.imgv||{}; o.ops=o.ops||[]; o.walls=o.walls||[]; o.rooms=o.rooms||[]; o.items=o.items||[];
+  o.floors=(o.floors&&o.floors.length)?o.floors:b.floors; o.n=o.n||1; if(!o.floors.some(function(f){return f.id===o.floor;})) o.floor=o.floors[0].id; return o;
+}
+function okData(o){return o&&(o.v===1||o.v===2)&&o.items&&(o.rooms||o.walls);}
+try{var raw=localStorage.getItem(KEY); if(raw){var o0=JSON.parse(raw); if(okData(o0)) S=norm(o0);}}catch(e){}
+
+/* 写真・3Dモデルは IndexedDB（使えない端末ではこの画面を開いている間だけ保持） */
 var DB=null, IMG={};
 function dbOpen(){return new Promise(function(res){try{var rq=indexedDB.open('ie-no-kiroku',1);
   rq.onupgradeneeded=function(){rq.result.createObjectStore('img');};
@@ -420,7 +564,30 @@ function dbDel(k){delete IMG[k]; if(DB)try{DB.transaction('img','readwrite').obj
 function imgPut(k,v){dbPut(k,v); S.imgv[k]=Date.now();}
 function imgDel(k){dbDel(k); delete S.imgv[k];}
 
-var view='3d', selI=null, selR=null, selO=null, selW=null, fFloor='all', query='', fitNext=true;
+/* ---------- 保存・元に戻す・やり直す ---------- */
+function syncStr(){var f=S.floor; S.floor=''; var t=JSON.stringify(S); S.floor=f; return t;}
+var saveT=0, lastStr=syncStr(), HIST=[], REDO=[];
+function commit(){
+  clearTimeout(saveT);
+  var ok=true; try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){ok=false;}
+  var t=syncStr(); if(t!==lastStr){HIST.push(lastStr); if(HIST.length>60) HIST.shift(); REDO=[]; lastStr=t; markDirty(); undoUi();}
+  if(!ok) $('saved').textContent='保存できませんでした'; else if(!SY.on) $('saved').textContent='保存済み（この端末）';
+}
+function save(){clearTimeout(saveT); saveT=setTimeout(commit,300);}
+function undoUi(){$('undo').disabled=!HIST.length; $('redo').disabled=!REDO.length;}
+function restore(str){
+  var fl=S.floor; try{S=norm(JSON.parse(str));}catch(e){return;}
+  if(S.floors.some(function(f){return f.id===fl;})) S.floor=fl;
+  Object.keys(S.imgv).forEach(function(k){if(!IMG[k]) delete S.imgv[k];});
+  arrangeAll(); lastStr=syncStr(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  markDirty(); undoUi(); sel=null; applyTheme(); syncSettings(); refresh();
+}
+function undo(){commit(); if(!HIST.length) return; REDO.push(lastStr); restore(HIST.pop());}
+function redo(){commit(); if(!REDO.length) return; HIST.push(lastStr); restore(REDO.pop());}
+
+var view='3d', sel=null, fFloor='all', query='', fitNext=true;
+function selIs(k){return sel&&sel.k===k?sel.id:null;}
+function setSel(k,id){sel=id?{k:k,id:id}:null;}
 
 /* ---------- 3D ---------- */
 var T=null;
@@ -444,95 +611,147 @@ function parts(t,w,h,d){
       a=[]; n=Math.max(3,Math.round(h/0.2));
       for(i=0;i<n;i++){var sh=(i+1)*h/n; a.push([0,sh/2,-d/2+d*(i+0.5)/n,w,sh,d/n]);}
       return a;
+    case 'toilet': return [[0,h*0.22,d*0.12,w*0.9,h*0.44,d*0.7],[0,h*0.5,-d*0.38,w,h,d*0.24],[0,h*0.47,d*0.12,w*0.95,0.04,d*0.72]];
+    case 'bath': return [[0,h*0.1,0,w,h*0.2,d],[-w/2+0.04,h/2,0,0.08,h,d],[w/2-0.04,h/2,0,0.08,h,d],[0,h/2,-d/2+0.04,w,h,0.08],[0,h/2,d/2-0.04,w,h,0.08]];
+    case 'basin': return [[0,h*0.45,0,w,h*0.9,d],[0,h*0.95,0,w*0.7,h*0.1,d*0.7],[0,h+0.4,-d/2+0.02,w*0.9,0.7,0.03]];
     default: return [[0,h/2,0,w,h,d]];
   }
 }
+function floorTex(kind){
+  var c=document.createElement('canvas'); c.width=c.height=256; var x=c.getContext('2d'),i,j; x.fillStyle='#fff'; x.fillRect(0,0,256,256);
+  if(kind==='wood'){
+    for(i=0;i<8;i++){var off=(i%2)*90+(i*37)%60; for(j=-1;j<3;j++){var g=228+((i*53+j*29)%5)*6; x.fillStyle='rgb('+g+','+g+','+g+')'; x.fillRect(off+j*128,i*32,127,31);}}
+    x.fillStyle='rgba(0,0,0,.16)'; for(i=0;i<8;i++) x.fillRect(0,i*32+31,256,1);
+  }else if(kind==='tatami'){
+    x.fillStyle='#f4f4f4'; x.fillRect(0,0,256,256); x.strokeStyle='rgba(0,0,0,.05)'; for(i=0;i<256;i+=3){x.beginPath(); x.moveTo(0,i+.5); x.lineTo(256,i+.5); x.stroke();}
+    x.fillStyle='rgba(0,0,0,.28)'; x.fillRect(0,0,256,5); x.fillRect(0,126,256,5); x.fillRect(0,0,5,256);
+  }else if(kind==='tile'){
+    x.fillStyle='rgba(0,0,0,.2)'; x.fillRect(0,0,256,3); x.fillRect(0,128,256,3); x.fillRect(0,0,3,256); x.fillRect(128,0,3,256);
+  }
+  return c;
+}
+var TEXSIZE={wood:1.28,tatami:1.82,tile:0.6};
 function init3D(){
   if(!window.THREE) throw new Error('three');
   var canvas=$('view');
   var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-  var scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(40,1,0.1,200);
-  scene.add(new THREE.AmbientLight(0xffffff,0.66));
-  var sun=new THREE.DirectionalLight(0xffffff,0.34); sun.position.set(-4,10,-3); scene.add(sun);
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  var scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(42,1,0.05,300);
+  scene.add(new THREE.HemisphereLight(0xffffff,0xb9b4aa,0.62));
+  var sun=new THREE.DirectionalLight(0xffffff,0.42); sun.castShadow=true; sun.shadow.mapSize.set(1024,1024); sun.shadow.bias=-0.0015; scene.add(sun); scene.add(sun.target);
   var root=new THREE.Group(); scene.add(root);
-  var mEdge=new THREE.LineBasicMaterial({transparent:true,opacity:0.7});
+  var mEdge=new THREE.LineBasicMaterial({transparent:true,opacity:0.55});
+  var mCore=new THREE.MeshLambertMaterial(), mGlass=new THREE.MeshLambertMaterial({transparent:true,opacity:0.35}), mDoor=new THREE.MeshLambertMaterial(), mCeil=new THREE.MeshLambertMaterial({side:THREE.DoubleSide});
   var marker=new THREE.Mesh(new THREE.OctahedronGeometry(0.13),new THREE.MeshBasicMaterial()); marker.visible=false; scene.add(marker);
-  var pickable=[], mats={}, rmats=[], labels=[], TX={}, TW=0.06;
-  var mGlass=new THREE.MeshLambertMaterial({transparent:true,opacity:0.4}), mDoor=new THREE.MeshLambertMaterial(), mFree=new THREE.MeshLambertMaterial();
-  function wallRun(h,line,ctr,a,b,mat,segs,hh){
-    if(b-a<0.01) return;
-    var cuts=segs.filter(function(q){return q.h===h&&Math.abs(q.c-line)<0.12&&q.b>a+0.01&&q.a<b-0.01;})
-      .map(function(q){return {a:Math.max(a,q.a),b:Math.min(b,q.b),k:q.kind};}).sort(function(p,q){return p.a-q.a;}), cur=a;
-    function piece(p,q,hh,y,m,th){if(q-p<0.01) return; if(h) box(q-p,hh,th,m,(p+q)/2,y,ctr); else box(th,hh,q-p,m,ctr,y,(p+q)/2);}
-    cuts.forEach(function(c){
-      if(c.b<=cur) return; var s0=Math.max(c.a,cur), sill=Math.min(0.45,hh*0.4); piece(cur,s0,hh,hh/2,mat,TW);
-      if(c.k==='window'){piece(s0,c.b,sill,sill/2,mat,TW); piece(s0,c.b,hh-sill,sill+(hh-sill)/2,mGlass,0.02);}
-      cur=c.b;
-    });
-    piece(cur,b,hh,hh/2,mat,TW);
-  }
-  var orb={theta:-0.55,phi:0.92,r:13}, target=new THREE.Vector3();
+  var pickable=[], mats={}, rmats=[], skinM={}, labels=[], TX={}, FT={}, GLB={};
+  var orb={theta:-0.55,phi:0.92,r:13}, target=new THREE.Vector3(), walk={x:0,z:0,yaw:0,pitch:0,on:false}, keys={f:0,s:0}, raf=0, lastT=0;
 
-  function box(w,h,d,mat,x,y,z,parent){
-    var geo=new THREE.BoxGeometry(w,h,d), m=new THREE.Mesh(geo,mat); m.position.set(x,y,z);
-    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),mEdge)); (parent||root).add(m); return m;
+  function box(w,h,d,mat,x,y,z,parent,edges){
+    var geo=new THREE.BoxGeometry(w,h,d), m=new THREE.Mesh(geo,mat); m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+    if(edges!==false) m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),mEdge)); (parent||root).add(m); return m;
   }
   function tex(id){
     var src=IMG[id]; if(!src) return null;
-    if(!TX[id]||TX[id].src!==src){
-      var t=new THREE.TextureLoader().load(src,function(){draw();}); t.minFilter=THREE.LinearFilter; t.generateMipmaps=false;
-      TX[id]={src:src,t:t};
-    }
+    if(!TX[id]||TX[id].src!==src){var t=new THREE.TextureLoader().load(src,function(){draw();}); t.minFilter=THREE.LinearFilter; t.generateMipmaps=false; TX[id]={src:src,t:t};}
     return TX[id].t;
   }
+  function ftex(kind){
+    if(!TEXSIZE[kind]) return null;
+    if(!FT[kind]){var t=new THREE.CanvasTexture(floorTex(kind)); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(1/TEXSIZE[kind],1/TEXSIZE[kind]); FT[kind]=t;}
+    return FT[kind];
+  }
+  /* 読み込んだ3Dモデル（GLB）を、物のサイズの箱に収まるように置く */
+  function addGlb(it,g){
+    var key='glb:'+it.id, src=IMG[key];
+    function put(obj){
+      var o=obj.clone(true), b=new THREE.Box3().setFromObject(o), sz=b.getSize(new THREE.Vector3()), k=Math.min(it.s[0]/(sz.x||1),it.s[1]/(sz.y||1),it.s[2]/(sz.z||1));
+      o.scale.multiplyScalar(k); b.setFromObject(o); var c=b.getCenter(new THREE.Vector3()); o.position.x-=c.x; o.position.z-=c.z; o.position.y-=b.min.y;
+      o.traverse(function(m){if(m.isMesh){m.castShadow=true; m.userData.id=it.id; pickable.push(m);}}); g.add(o);
+    }
+    if(GLB[key]&&GLB[key].src===src&&GLB[key].obj){put(GLB[key].obj); return true;}
+    if(!GLB[key]||GLB[key].src!==src){
+      GLB[key]={src:src,obj:null};
+      loadGltf().then(function(){
+        fetch(src).then(function(r){return r.arrayBuffer();}).then(function(buf){
+          new THREE.GLTFLoader().parse(buf,'',function(gl){if(GLB[key]&&GLB[key].src===src){GLB[key].obj=gl.scene; if(view==='3d') rebuild();}},function(){});
+        }).catch(function(){});
+      }).catch(function(){});
+    }
+    return false;
+  }
   function addItem(it){
-    var w=it.s[0],h=it.s[1],d=it.s[2], g=new THREE.Group(), mat=new THREE.MeshLambertMaterial();
-    parts(it.t||'box',w,h,d).forEach(function(p){
+    var w=it.s[0],h=it.s[1],d=it.s[2], g=new THREE.Group(), mat=new THREE.MeshLambertMaterial(), done=false;
+    if(IMG['glb:'+it.id]) done=addGlb(it,g);
+    if(!done) parts(it.t||'box',w,h,d).forEach(function(p){
       var m;
       if(Array.isArray(p)) m=box(p[3],p[4],p[5],mat,p[0],p[1],p[2],g);
       else{var geo=new THREE.CylinderGeometry(p.r,p.r,0.03,28); m=new THREE.Mesh(geo,mat); m.rotation.x=Q; m.position.set(0,p.y,p.z); m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),mEdge)); g.add(m);}
       m.userData.id=it.id; pickable.push(m);
     });
-    var tx=tex(it.id);
+    var tx=!done&&tex(it.id);
     if(tx){
       var a=it.pa||1, top=TOPPHOTO[it.t], bw=w*0.92, bh=(top?d:h)*0.92, pw=Math.min(bw,bh*a), ph=pw/a;
-      var pl=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph),new THREE.MeshBasicMaterial({map:tx}));
-      pl.userData.id=it.id;
+      var pl=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph),new THREE.MeshBasicMaterial({map:tx})); pl.userData.id=it.id;
       if(top){pl.rotation.x=-Q; pl.position.set(0,h+0.008,0);} else pl.position.set(0,h/2,d/2+(it.t==='washer'?0.02:0.008));
       g.add(pl); pickable.push(pl);
     }
     g.position.set(it.p[0],it.y||0,it.p[1]); g.rotation.y=it.rot||0; root.add(g); mats[it.id]=mat;
   }
+  function skinMat(r){var k=r?r.id:'_'; if(!skinM[k]){skinM[k]=new THREE.MeshLambertMaterial(); skinM[k]._r=r;} return skinM[k];}
+  function addWall3(w,mode){
+    var L=wlen(w); if(L<0.02) return;
+    var ang=Math.atan2(w.z2-w.z1,w.x2-w.x1), ux=(w.x2-w.x1)/L, uz=(w.z2-w.z1)/L, t=w.t||WALLT, H=mode==='cut'?Math.min(w.h||WALLH,CUT):(w.h||WALLH);
+    var g=new THREE.Group(); g.position.set(w.x1,0,w.z1); g.rotation.y=-ang; root.add(g);
+    var ops=S.ops.filter(function(o){return o.wall===w.id;}).map(function(o){var s=opSpan(o); s.o=o; return s;}), bs=[0,L];
+    (GEO[w.floor].splits[w.id]||[]).forEach(function(v){bs.push(v);}); ops.forEach(function(s){bs.push(s.a,s.b);});
+    bs.sort(function(a,b){return a-b;});
+    for(var i=0;i<bs.length-1;i++){
+      var p=bs[i], q=bs[i+1]; if(q-p<0.004) continue;
+      var mid=(p+q)/2, o=null, spans; ops.forEach(function(s){if(!o&&mid>s.a&&mid<s.b) o=s;});
+      if(!o) spans=[[0,H]];
+      else{spans=[]; if(o.sill>0.01) spans.push([0,Math.min(o.sill,H)]); if(H>o.top+0.01) spans.push([o.top,H]);
+        if(o.o.kind==='window'){var g0=Math.min(o.sill,H), g1=Math.min(o.top,H); if(g1-g0>0.02){var gm=new THREE.Mesh(new THREE.BoxGeometry(q-p,g1-g0,0.02),mGlass); gm.position.set(mid,(g0+g1)/2,0); g.add(gm);}}}
+      var p0=p<0.002?-t/2:p, q0=q>L-0.002?L+t/2:q, wx=w.x1+ux*mid, wz=w.z1+uz*mid;
+      var ra=roomAt(w.floor,wx-uz*0.15,wz+ux*0.15), rb=roomAt(w.floor,wx+uz*0.15,wz-ux*0.15);
+      spans.forEach(function(sp){
+        if(sp[1]-sp[0]<0.005) return; var y=(sp[0]+sp[1])/2, hh=sp[1]-sp[0];
+        box(q0-p0,hh,t,mCore,(p0+q0)/2,y,0,g);
+        var sa=new THREE.Mesh(new THREE.BoxGeometry(q-p,hh,0.012),skinMat(ra)); sa.position.set(mid,y,t/2+0.006); sa.receiveShadow=true; g.add(sa);
+        var sb=new THREE.Mesh(new THREE.BoxGeometry(q-p,hh,0.012),skinMat(rb)); sb.position.set(mid,y,-t/2-0.006); sb.receiveShadow=true; g.add(sb);
+      });
+    }
+    ops.forEach(function(s){
+      var o=s.o, wd=s.b-s.a, hh=Math.min(s.top,H), hb=o.hinge==='b', sw=o.out?-1:1; if(o.kind==='window'||o.kind==='gap'||hh<0.05) return;
+      if(o.kind==='slide') box(wd/2,hh,0.03,mDoor,hb?s.b-wd/4:s.a+wd/4,hh/2,0.03,g);
+      else box(0.04,hh,wd,mDoor,hb?s.b:s.a,hh/2,sw*wd/2,g);
+    });
+  }
+  function clear(){while(root.children.length){var c=root.children[0]; root.remove(c); c.traverse(function(o){if(o.geometry&&!o.userData.keep)o.geometry.dispose();});}}
   function rebuild(){
-    while(root.children.length){var c=root.children[0]; root.remove(c); c.traverse(function(o){if(o.geometry)o.geometry.dispose();});}
-    pickable=[]; mats={}; rmats=[]; labels=[];
-    var x0=1e9,z0=1e9,x1=-1e9,z1=-1e9, t=TW, segs=floorOps().map(opSeg).filter(Boolean).concat(offSegs());
-    floorRooms().forEach(function(r,i){
-      var fm=new THREE.MeshLambertMaterial(), wm=new THREE.MeshLambertMaterial(), cx=r.x+r.w/2, cz=r.z+r.d/2, rh=r.wh||WH;
-      var slab=new THREE.Mesh(new THREE.BoxGeometry(r.w,0.06,r.d),fm); slab.position.set(cx,-0.03,cz); root.add(slab);
-      wallRun(true,r.z,r.z+t/2,r.x,r.x+r.w,wm,segs,rh); wallRun(true,r.z+r.d,r.z+r.d-t/2,r.x,r.x+r.w,wm,segs,rh);
-      wallRun(false,r.x,r.x+t/2,r.z+t,r.z+r.d-t,wm,segs,rh); wallRun(false,r.x+r.w,r.x+r.w-t/2,r.z+t,r.z+r.d-t,wm,segs,rh);
-      var lp=new THREE.PointLight(0xffffff,0.22,Math.max(r.w,r.d)*1.7,1.2); lp.position.set(cx,2.3,cz); root.add(lp);
-      var sp=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false,transparent:true})); sp.position.set(cx,rh+0.5,cz); sp.renderOrder=5; root.add(sp);
-      labels.push({sp:sp,text:r.name}); rmats.push({r:r,i:i,fm:fm,wm:wm,lp:lp});
-      x0=Math.min(x0,r.x); z0=Math.min(z0,r.z); x1=Math.max(x1,r.x+r.w); z1=Math.max(z1,r.z+r.d);
+    clear(); pickable=[]; mats={}; rmats=[]; labels=[]; skinM={};
+    var mode=S.set.view3||'cut', geo=GEO[S.floor]||{faces:[],splits:{}}, x0=1e9,z0=1e9,x1=-1e9,z1=-1e9, maxH=WALLH;
+    function ext(x,z){x0=Math.min(x0,x);z0=Math.min(z0,z);x1=Math.max(x1,x);z1=Math.max(z1,z);}
+    floorWalls().forEach(function(w){ext(w.x1,w.z1); ext(w.x2,w.z2); maxH=Math.max(maxH,w.h||WALLH);});
+    geo.faces.forEach(function(fc,i){
+      var r=fc.room, sh=new THREE.Shape(); fc.poly.forEach(function(p,j){if(j) sh.lineTo(p.x,p.z); else sh.moveTo(p.x,p.z);});
+      var fm=new THREE.MeshLambertMaterial({side:THREE.DoubleSide}), fg=new THREE.ShapeGeometry(sh), mesh=new THREE.Mesh(fg,fm);
+      mesh.rotation.x=Q; mesh.receiveShadow=true; root.add(mesh);
+      if(mode==='walk'){var cm=new THREE.Mesh(new THREE.ShapeGeometry(sh),mCeil); cm.rotation.x=Q; cm.position.y=maxH; root.add(cm);}
+      var lp=new THREE.PointLight(0xffffff,0.2,Math.sqrt(fc.area)*2.6+2,1.2); lp.position.set(fc.c.x,mode==='cut'?2.2:Math.max(1.6,maxH-0.25),fc.c.z); root.add(lp);
+      if(mode!=='walk'){var sp=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false,transparent:true})); sp.position.set(fc.c.x,(mode==='cut'?CUT:maxH)+0.45,fc.c.z); sp.renderOrder=5; root.add(sp); labels.push({sp:sp,text:r.name});}
+      rmats.push({r:r,i:i,fm:fm,lp:lp});
     });
-    floorOps().forEach(function(o){
-      var g=opSeg(o); if(!g||o.kind==='window'||o.kind==='gap') return;
-      var dir=g.dir, w=g.b-g.a, hb=o.hinge==='b', dh=g.hh;
-      if(o.kind==='slide'){var m0=hb?g.b-w/4:g.a+w/4; if(g.h) box(w/2,dh,0.03,mDoor,m0,dh/2,g.c+dir*0.03); else box(0.03,dh,w/2,mDoor,g.c+dir*0.03,dh/2,m0);}
-      else{var sw=o.out?-dir:dir, hp=hb?g.b:g.a; if(g.h) box(0.04,dh,w,mDoor,hp,dh/2,g.c+sw*w/2); else box(w,dh,0.04,mDoor,g.c+sw*w/2,dh/2,hp);}
-    });
-    floorWalls().forEach(function(fw){
-      var hz=Math.abs(fw.z2-fw.z1)<0.001, len=hz?Math.abs(fw.x2-fw.x1):Math.abs(fw.z2-fw.z1), fh=fw.h||WH; if(len<0.01) return;
-      if(hz) wallRun(true,fw.z1,fw.z1,Math.min(fw.x1,fw.x2),Math.max(fw.x1,fw.x2),mFree,segs,fh); else wallRun(false,fw.x1,fw.x1,Math.min(fw.z1,fw.z2),Math.max(fw.z1,fw.z2),mFree,segs,fh);
-      x0=Math.min(x0,fw.x1,fw.x2); z0=Math.min(z0,fw.z1,fw.z2); x1=Math.max(x1,fw.x1,fw.x2); z1=Math.max(z1,fw.z1,fw.z2);
-    });
-    floorItems().forEach(function(it){addItem(it); x0=Math.min(x0,it.p[0]); z0=Math.min(z0,it.p[1]); x1=Math.max(x1,it.p[0]); z1=Math.max(z1,it.p[1]);});
+    floorWalls().forEach(function(w){addWall3(w,mode);});
+    floorItems().forEach(function(it){addItem(it); ext(it.p[0],it.p[1]);});
     if(x1<x0){x0=z0=0;x1=z1=4;}
-    target.set((x0+x1)/2,0.3,(z0+z1)/2);
-    if(fitNext){var span=Math.max(x1-x0,z1-z0,4), asp=camera.aspect||1; orb.r=(span*1.25+5)*(asp<1?1.4:(asp<1.5?1.1:1)); fitNext=false;}
+    target.set((x0+x1)/2,0.4,(z0+z1)/2);
+    var span=Math.max(x1-x0,z1-z0,4);
+    sun.position.set(target.x-span*0.5,span*1.4+6,target.z-span*0.35); sun.target.position.copy(target);
+    var sc=sun.shadow.camera; sc.left=-span; sc.right=span; sc.top=span; sc.bottom=-span; sc.near=0.5; sc.far=span*3+20; sc.updateProjectionMatrix();
+    if(fitNext){var asp=camera.aspect||1; orb.r=(span*1.25+5)*(asp<1?1.4:(asp<1.5?1.1:1)); fitNext=false;
+      var big=null; geo.faces.forEach(function(fc){if(!big||fc.area>big.area) big=fc;}); walk.x=big?big.c.x:target.x; walk.z=big?big.c.z:target.z;}
+    walk.on=(mode==='walk'); $('pad').classList.toggle('hide',!walk.on||view!=='3d');
     paint();
   }
   function makeLabel(l,color){
@@ -544,25 +763,36 @@ function init3D(){
   }
   function paint(){
     renderer.setClearColor(new THREE.Color(css('--bg')),1);
-    var ac=css('--accent'), ic=css('--item'), muted=css('--muted');
-    mEdge.color.set(css('--edge')); mGlass.color.set(css('--blue')); mDoor.color.set(css('--item')); mFree.color.set(css('--wall')); marker.material.color.set(ac); marker.visible=false;
+    var ac=css('--accent'), ic=css('--item'), muted=css('--muted'), wc=css('--wall'), sid=selIs('item');
+    mEdge.color.set(css('--edge')); mCore.color.set(wc); mGlass.color.set(css('--blue')); mDoor.color.set(ic); mCeil.color.set('#ffffff');
+    marker.material.color.set(ac); marker.visible=false;
     rmats.forEach(function(m){
-      m.fm.color.set(m.r.fl||css(m.i%2?'--floor2':'--floor')); m.wm.color.set(m.r.wall||css('--wall'));
-      m.lp.color.set(m.r.light||'#ffffff'); m.lp.intensity=0.44*(m.r.lux==null?50:m.r.lux)/100;
+      var k=m.r.fk||'plain', t=ftex(k);
+      m.fm.color.set(m.r.fl||(k==='wood'?'#C9A77A':(k==='tatami'?'#B9BE8A':css(m.i%2?'--floor2':'--floor'))));
+      if(m.fm.map!==t){m.fm.map=t; m.fm.needsUpdate=true;}
+      m.lp.color.set(m.r.light||'#ffffff'); m.lp.intensity=0.4*(m.r.lux==null?50:m.r.lux)/100;
     });
+    Object.keys(skinM).forEach(function(k){var r=skinM[k]._r; skinM[k].color.set(r&&r.wall?r.wall:wc);});
     floorItems().forEach(function(it){
-      var mt=mats[it.id]; if(!mt) return; var on=it.id===selI;
+      var mt=mats[it.id]; if(!mt) return; var on=it.id===sid;
       mt.color.set(it.color||ic); mt.emissive.set(on?ac:'#000000'); mt.emissiveIntensity=on?0.3:0;
       mt.transparent=it.st==='missing'&&!on; mt.opacity=mt.transparent?0.4:1; mt.needsUpdate=true;
-      if(on){marker.position.set(it.p[0],(it.y||0)+it.s[1]+0.4,it.p[1]); marker.visible=true;}
+      if(on&&!walk.on){marker.position.set(it.p[0],(it.y||0)+it.s[1]+0.4,it.p[1]); marker.visible=true;}
     });
     labels.forEach(function(l){makeLabel(l,muted);});
     draw();
   }
   function draw(){
-    var sp=Math.sin(orb.phi);
-    camera.position.set(target.x+orb.r*sp*Math.sin(orb.theta),target.y+orb.r*Math.cos(orb.phi),target.z+orb.r*sp*Math.cos(orb.theta));
-    camera.lookAt(target); renderer.render(scene,camera);
+    var fov=walk.on?72:42; if(camera.fov!==fov){camera.fov=fov; camera.updateProjectionMatrix();}
+    if(walk.on){
+      camera.position.set(walk.x,1.5,walk.z);
+      var cp=Math.cos(walk.pitch); camera.lookAt(walk.x+Math.sin(walk.yaw)*cp,1.5+Math.sin(walk.pitch),walk.z-Math.cos(walk.yaw)*cp);
+    }else{
+      var sp=Math.sin(orb.phi);
+      camera.position.set(target.x+orb.r*sp*Math.sin(orb.theta),target.y+orb.r*Math.cos(orb.phi),target.z+orb.r*sp*Math.cos(orb.theta));
+      camera.lookAt(target);
+    }
+    renderer.render(scene,camera);
   }
   function resize(){
     var w=canvas.clientWidth,h=canvas.clientHeight; if(!w||!h) return;
@@ -570,9 +800,20 @@ function init3D(){
   }
   if(window.ResizeObserver) new ResizeObserver(resize).observe(canvas); else window.addEventListener('resize',resize);
   resize();
+  /* 歩くモード: 画面のパッドを押している間だけ動く */
+  function tick(ts){
+    raf=0; if(!walk.on||(!keys.f&&!keys.s)) return;
+    var dt=Math.min(0.05,(ts-lastT)/1000||0.016); lastT=ts;
+    walk.x+=(Math.sin(walk.yaw)*keys.f+Math.cos(walk.yaw)*keys.s)*1.6*dt; walk.z+=(-Math.cos(walk.yaw)*keys.f+Math.sin(walk.yaw)*keys.s)*1.6*dt;
+    draw(); raf=requestAnimationFrame(tick);
+  }
+  [].forEach.call(document.querySelectorAll('#pad button'),function(b){
+    function on(e){e.preventDefault(); keys.f=+b.dataset.f; keys.s=+b.dataset.s; lastT=performance.now(); if(!raf) raf=requestAnimationFrame(tick);}
+    function off(){keys.f=0; keys.s=0;}
+    b.addEventListener('pointerdown',on); b.addEventListener('pointerup',off); b.addEventListener('pointerleave',off); b.addEventListener('pointercancel',off);
+  });
 
   var pts=new Map(), moved=0, pinch0=0, r0=0;
-  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
   function pdist(){var a=[]; pts.forEach(function(p){a.push(p);}); return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1;}
   canvas.addEventListener('pointerdown',function(e){
     try{canvas.setPointerCapture(e.pointerId);}catch(_){}
@@ -582,24 +823,32 @@ function init3D(){
   canvas.addEventListener('pointermove',function(e){
     var p=pts.get(e.pointerId); if(!p) return;
     var dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
-    if(pts.size===1){moved+=Math.abs(dx)+Math.abs(dy); if(moved>6){orb.theta-=dx*0.008; orb.phi=clamp(orb.phi-dy*0.006,0.2,1.45); draw();}}
-    else if(pts.size===2){orb.r=clamp(r0*pinch0/pdist(),4,80); draw();}
+    if(pts.size===1){moved+=Math.abs(dx)+Math.abs(dy); if(moved>6){
+      if(walk.on){walk.yaw-=dx*0.005; walk.pitch=clamp(walk.pitch+dy*0.004,-1.2,1.2);} else{orb.theta-=dx*0.008; orb.phi=clamp(orb.phi-dy*0.006,0.12,1.5);}
+      draw();}}
+    else if(pts.size===2&&!walk.on){orb.r=clamp(r0*pinch0/pdist(),3,120); draw();}
   });
   function up(e){var n=pts.size; pts.delete(e.pointerId); if(e.type==='pointerup'&&n===1&&moved<=6) pick(e);}
   canvas.addEventListener('pointerup',up); canvas.addEventListener('pointercancel',up);
-  canvas.addEventListener('wheel',function(e){e.preventDefault(); orb.r=clamp(orb.r*(1+e.deltaY*0.001),4,80); draw();},{passive:false});
+  canvas.addEventListener('wheel',function(e){e.preventDefault(); if(walk.on) return; orb.r=clamp(orb.r*(1+e.deltaY*0.001),3,120); draw();},{passive:false});
   var ray=new THREE.Raycaster();
   function pick(e){
     var b=canvas.getBoundingClientRect(), v=new THREE.Vector2((e.clientX-b.left)/b.width*2-1,-((e.clientY-b.top)/b.height)*2+1);
     ray.setFromCamera(v,camera); var hit=ray.intersectObjects(pickable,false);
-    selI=hit.length?hit[0].object.userData.id:null; selR=null; selO=null; selW=null; refresh();
+    setSel('item',hit.length?hit[0].object.userData.id:null); refresh();
   }
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){redraw();});
   T={rebuild:rebuild,resize:resize};
 }
+var gltfP=null;
+function loadGltf(){
+  if(window.THREE&&THREE.GLTFLoader) return Promise.resolve();
+  if(!gltfP) gltfP=new Promise(function(res,rej){var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js'; s.onload=res; s.onerror=function(){gltfP=null; rej(new Error('loader'));}; document.head.appendChild(s);});
+  return gltfP;
+}
 
 /* ---------- 間取り編集（2D） ---------- */
-var P={s:42,ox:30,oy:96,mode:'select',fit:{},im:{}}, G=null, PP=new Map();
+var P={s:42,ox:30,oy:110,mode:'select',fit:{},im:{}}, G=null, PP=new Map();
 function planImage(){
   var k='plan:'+S.floor, src=IMG[k]; if(!src) return null;
   if(!P.im[k]||P.im[k]._src!==src){var im=new Image(); im._src=src; im.onload=function(){if(view==='2d')drawPlan();}; im.src=src; P.im[k]=im;}
@@ -608,233 +857,257 @@ function planImage(){
 function planCfg(){if(!S.plans[S.floor])S.plans[S.floor]={wm:10}; return S.plans[S.floor];}
 function fitPlan(){
   var c=$('plan'), W=c.clientWidth||300, H=c.clientHeight||300, x0=1e9,z0=1e9,x1=-1e9,z1=-1e9;
-  floorRooms().forEach(function(r){x0=Math.min(x0,r.x);z0=Math.min(z0,r.z);x1=Math.max(x1,r.x+r.w);z1=Math.max(z1,r.z+r.d);});
+  floorWalls().forEach(function(w){x0=Math.min(x0,w.x1,w.x2);z0=Math.min(z0,w.z1,w.z2);x1=Math.max(x1,w.x1,w.x2);z1=Math.max(z1,w.z1,w.z2);});
+  floorItems().forEach(function(i){x0=Math.min(x0,i.p[0]);z0=Math.min(z0,i.p[1]);x1=Math.max(x1,i.p[0]);z1=Math.max(z1,i.p[1]);});
   var im=planImage(); if(im){var wm=planCfg().wm; x0=Math.min(x0,0);z0=Math.min(z0,0);x1=Math.max(x1,wm);z1=Math.max(z1,wm*im.naturalHeight/im.naturalWidth);}
   if(x1<x0){x0=0;z0=0;x1=8;z1=6;}
-  var top=96, pad=24; P.s=Math.max(8,Math.min((W-pad*2)/(x1-x0),(H-top-pad)/(z1-z0),120));
+  var tb=document.querySelector('.stage .top'), top=(tb?tb.offsetHeight:100)+22, pad=28; P.s=clamp(Math.min((W-pad*2)/Math.max(0.5,x1-x0),(H-top-pad)/Math.max(0.5,z1-z0)),8,140);
   P.ox=(W-(x1-x0)*P.s)/2-x0*P.s; P.oy=top+((H-top-pad)-(z1-z0)*P.s)/2-z0*P.s; P.fit[S.floor]=true;
 }
+function floorColor(r,i){var k=r.fk||'plain'; return r.fl||(k==='wood'?'#C9A77A':(k==='tatami'?'#B9BE8A':css(i%2?'--floor2':'--floor')));}
 function drawPlan(){
   var c=$('plan'), dpr=Math.min(window.devicePixelRatio||1,2), W=c.clientWidth, H=c.clientHeight; if(!W||!H) return;
   if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr); c.height=Math.round(H*dpr);}
   var x=c.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0);
-  var ink=css('--ink'), line=css('--line'), ac=css('--accent'), muted=css('--muted');
-  x.fillStyle=css('--bg'); x.fillRect(0,0,W,H);
+  var ink=css('--ink'), line=css('--line'), ac=css('--accent'), muted=css('--muted'), bg=css('--bg'), font=css('--body'), s=P.s;
+  function SX(v){return P.ox+v*s;} function SY(v){return P.oy+v*s;}
+  function hdl(px,py){x.fillStyle=ac; x.fillRect(px-7,py-7,14,14); x.strokeStyle=bg; x.lineWidth=1.5; x.strokeRect(px-7,py-7,14,14);}
+  x.fillStyle=bg; x.fillRect(0,0,W,H);
   var im=planImage();
-  if(im){var wm=planCfg().wm; x.globalAlpha=0.55; x.drawImage(im,P.ox,P.oy,wm*P.s,wm*P.s*im.naturalHeight/im.naturalWidth); x.globalAlpha=1;}
-  if(P.s>=14){x.strokeStyle=line; x.lineWidth=1; x.beginPath();
-    var gx0=Math.floor(-P.ox/P.s), gx1=Math.ceil((W-P.ox)/P.s), gz0=Math.floor(-P.oy/P.s), gz1=Math.ceil((H-P.oy)/P.s), i;
-    for(i=gx0;i<=gx1;i++){var sx=Math.round(P.ox+i*P.s)+0.5; x.moveTo(sx,0); x.lineTo(sx,H);}
-    for(i=gz0;i<=gz1;i++){var sy=Math.round(P.oy+i*P.s)+0.5; x.moveTo(0,sy); x.lineTo(W,sy);}
+  if(im){var wm=planCfg().wm; x.globalAlpha=0.55; x.drawImage(im,P.ox,P.oy,wm*s,wm*s*im.naturalHeight/im.naturalWidth); x.globalAlpha=1;}
+  if(s>=14){x.strokeStyle=line; x.lineWidth=1; x.beginPath(); var i;
+    for(i=Math.floor(-P.ox/s);i<=Math.ceil((W-P.ox)/s);i++){var gx=Math.round(SX(i))+0.5; x.moveTo(gx,0); x.lineTo(gx,H);}
+    for(i=Math.floor(-P.oy/s);i<=Math.ceil((H-P.oy)/s);i++){var gy=Math.round(SY(i))+0.5; x.moveTo(0,gy); x.lineTo(W,gy);}
     x.globalAlpha=0.5; x.stroke(); x.globalAlpha=1;}
-  x.font='600 13px '+css('--body'); x.textBaseline='top';
-  floorRooms().forEach(function(r,i){
-    var sx=P.ox+r.x*P.s, sy=P.oy+r.z*P.s, w=r.w*P.s, h=r.d*P.s, on=r.id===selR;
-    x.globalAlpha=im?0.55:1; x.fillStyle=r.fl||css(i%2?'--floor2':'--floor'); x.fillRect(sx,sy,w,h); x.globalAlpha=1;
-    x.lineWidth=on?3:2; x.strokeStyle=on?ac:ink; x.strokeRect(sx,sy,w,h);
-    x.fillStyle=ink; x.fillText(r.name,sx+6,sy+5,Math.max(10,w-10));
-    x.fillStyle=muted; x.font='11px '+css('--body'); x.fillText(r2(r.w)+'×'+r2(r.d)+'m',sx+6,sy+22,Math.max(10,w-10)); x.font='600 13px '+css('--body');
-    if(on){x.fillStyle=ac; x.fillRect(sx+w-8,sy+h-8,16,16);}
+  /* 部屋（壁で囲まれた面） */
+  var geo=GEO[S.floor]||{faces:[]}, sr=selIs('room');
+  geo.faces.forEach(function(fc,i){
+    x.beginPath(); fc.poly.forEach(function(p,j){if(j) x.lineTo(SX(p.x),SY(p.z)); else x.moveTo(SX(p.x),SY(p.z));}); x.closePath();
+    x.globalAlpha=im?0.5:1; x.fillStyle=floorColor(fc.room,i); x.fill(); x.globalAlpha=1;
+    if(fc.room.id===sr){x.strokeStyle=ac; x.lineWidth=3; x.setLineDash([6,4]); x.stroke(); x.setLineDash([]);}
   });
-  offSegs().forEach(function(g){
-    var ax=P.ox+(g.h?g.a:g.c)*P.s, ay=P.oy+(g.h?g.c:g.a)*P.s, bx=P.ox+(g.h?g.b:g.c)*P.s, by=P.oy+(g.h?g.c:g.b)*P.s;
-    x.strokeStyle=css('--bg'); x.lineWidth=6; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();
-    x.strokeStyle=muted; x.lineWidth=1; x.setLineDash([3,5]); x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke(); x.setLineDash([]);
+  /* 壁 */
+  var sw=selIs('wall'), so=selIs('op'), si=selIs('item');
+  x.lineCap='square';
+  floorWalls().forEach(function(w){
+    x.strokeStyle=w.id===sw?ac:ink; x.lineWidth=Math.max(3,(w.t||WALLT)*s); x.beginPath(); x.moveTo(SX(w.x1),SY(w.z1)); x.lineTo(SX(w.x2),SY(w.z2)); x.stroke();
   });
-  function hdl(px,py){x.fillStyle=ac; x.fillRect(px-7,py-7,14,14); x.strokeStyle=css('--bg'); x.lineWidth=1.5; x.strokeRect(px-7,py-7,14,14);}
-  floorWalls().forEach(function(fw){
-    x.strokeStyle=fw.id===selW?ac:ink; x.lineWidth=5; x.beginPath(); x.moveTo(P.ox+fw.x1*P.s,P.oy+fw.z1*P.s); x.lineTo(P.ox+fw.x2*P.s,P.oy+fw.z2*P.s); x.stroke();
-  });
+  x.lineCap='butt';
+  /* ドア・窓・開口（壁の向きに合わせて回して描く） */
   floorOps().forEach(function(o){
-    var g=opSeg(o); if(!g) return;
-    var on=o.id===selO, ax=P.ox+(g.h?g.a:g.c)*P.s, ay=P.oy+(g.h?g.c:g.a)*P.s, bx=P.ox+(g.h?g.b:g.c)*P.s, by=P.oy+(g.h?g.c:g.b)*P.s;
-    x.lineCap='butt'; x.strokeStyle=css('--bg'); x.lineWidth=7; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();
-    if(o.kind==='window'){x.strokeStyle=on?ac:css('--blue'); x.lineWidth=4; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();}
-    else if(o.kind==='gap'){x.strokeStyle=on?ac:muted; x.lineWidth=on?2:1; x.setLineDash([3,5]); x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke(); x.setLineDash([]);}
+    var sp=opSpan(o); if(!sp) return; var w=sp.w, on=o.id===so, a=sp.a*s, b=sp.b*s, wd=b-a, wp=Math.max(3,(w.t||WALLT)*s)+3;
+    x.save(); x.translate(SX(w.x1),SY(w.z1)); x.rotate(Math.atan2(w.z2-w.z1,w.x2-w.x1));
+    x.strokeStyle=bg; x.lineWidth=wp; x.beginPath(); x.moveTo(a,0); x.lineTo(b,0); x.stroke();
+    if(o.kind==='window'){x.strokeStyle=on?ac:css('--blue'); x.lineWidth=4; x.beginPath(); x.moveTo(a,0); x.lineTo(b,0); x.stroke();}
+    else if(o.kind==='gap'){x.strokeStyle=on?ac:muted; x.lineWidth=on?2:1; x.setLineDash([3,5]); x.beginPath(); x.moveTo(a,0); x.lineTo(b,0); x.stroke(); x.setLineDash([]);}
     else{
-      var dir=g.dir, hb=o.hinge==='b', hx=hb?bx:ax, hy=hb?by:ay, ex=hb?ax:bx, ey=hb?ay:by, L=Math.hypot(bx-ax,by-ay);
+      var hb=o.hinge==='b', hx=hb?b:a, ex=hb?a:b, dir=o.out?-1:1;
       x.strokeStyle=on?ac:ink; x.lineWidth=on?2.5:1.5; x.beginPath();
-      if(o.kind==='slide'){
-        var mx=(ax+bx)/2, my=(ay+by)/2, ox2=g.h?0:dir*4, oy2=g.h?dir*4:0;
-        x.lineWidth=on?3.5:2.5; x.moveTo(hx,hy); x.lineTo(mx,my); x.moveTo(mx+ox2,my+oy2); x.lineTo(ex+ox2,ey+oy2);
-      }else{
-        var sw=o.out?-dir:dir, tx=g.h?hx:hx+sw*L, ty=g.h?hy+sw*L:hy;
-        var a1=Math.atan2(ty-hy,tx-hx), a2=Math.atan2(ey-hy,ex-hx), df=a2-a1; while(df>Math.PI) df-=2*Math.PI; while(df<=-Math.PI) df+=2*Math.PI;
-        x.moveTo(hx,hy); x.lineTo(tx,ty); x.moveTo(tx,ty); x.arc(hx,hy,L,a1,a2,df<0);
-      }
+      if(o.kind==='slide'){x.lineWidth=on?3.5:2.5; x.moveTo(hx,0); x.lineTo((a+b)/2,0); x.moveTo((a+b)/2,dir*4); x.lineTo(ex,dir*4);}
+      else{var a1=dir*Math.PI/2, a2=hb?Math.PI:0, df=a2-a1; while(df>Math.PI) df-=2*Math.PI; while(df<=-Math.PI) df+=2*Math.PI;
+        x.moveTo(hx,0); x.lineTo(hx,dir*wd); x.arc(hx,0,wd,a1,a2,df<0);}
       x.stroke();
     }
-    if(on){hdl(ax,ay); hdl(bx,by);}
+    if(on){hdl(a,0); hdl(b,0);}
+    x.restore();
   });
-  var sw0=selW&&fwall(selW); if(sw0&&sw0.floor===S.floor){hdl(P.ox+sw0.x1*P.s,P.oy+sw0.z1*P.s); hdl(P.ox+sw0.x2*P.s,P.oy+sw0.z2*P.s);}
-  if(G&&G.k==='gapdraw'){var gn=G.n, ga=gn.st+Math.min(G.a,G.b), gb=gn.st+Math.max(G.a,G.b); x.strokeStyle=ac; x.lineWidth=6; x.beginPath();
-    x.moveTo(P.ox+(gn.h?ga:gn.c)*P.s,P.oy+(gn.h?gn.c:ga)*P.s); x.lineTo(P.ox+(gn.h?gb:gn.c)*P.s,P.oy+(gn.h?gn.c:gb)*P.s); x.stroke();}
+  /* 寸法 */
+  if(s>=26){x.font='11px '+font; x.textAlign='center'; x.textBaseline='middle';
+    floorWalls().forEach(function(w){
+      var L=wlen(w); if(L*s<46) return; var mx=SX((w.x1+w.x2)/2), my=SY((w.z1+w.z2)/2), nx=-(w.z2-w.z1)/L, nz=(w.x2-w.x1)/L, t=L.toFixed(2), tw=x.measureText(t).width+6;
+      mx+=nx*13; my+=nz*13; x.fillStyle=bg; x.globalAlpha=0.8; x.fillRect(mx-tw/2,my-7,tw,14); x.globalAlpha=1; x.fillStyle=w.id===sw?ac:muted; x.fillText(t,mx,my);
+    });}
+  /* 物 */
   floorItems().forEach(function(it){
-    var f=fp(it), sx=P.ox+(it.p[0]-f[0]/2)*P.s, sy=P.oy+(it.p[1]-f[1]/2)*P.s, on=it.id===selI;
-    x.fillStyle=it.color||css('--item'); x.globalAlpha=it.st==='missing'?0.4:0.95; x.fillRect(sx,sy,f[0]*P.s,f[1]*P.s); x.globalAlpha=1;
-    x.lineWidth=on?2.5:1; x.strokeStyle=on?ac:ink; x.strokeRect(sx,sy,f[0]*P.s,f[1]*P.s);
-    /* 正面の向きを短い線で示す */
-    var k=((Math.round((it.rot||0)/Q)%4)+4)%4, cx=P.ox+it.p[0]*P.s, cy=P.oy+it.p[1]*P.s, dx=[0,1,0,-1][k], dy=[1,0,-1,0][k];
-    x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+dx*f[0]*P.s/2,cy+dy*f[1]*P.s/2); x.stroke();
+    var on=it.id===si, w=it.s[0]*s, d=it.s[2]*s;
+    x.save(); x.translate(SX(it.p[0]),SY(it.p[1])); x.rotate(-(it.rot||0));
+    x.fillStyle=it.color||css('--item'); x.globalAlpha=it.st==='missing'?0.4:0.95; x.fillRect(-w/2,-d/2,w,d); x.globalAlpha=1;
+    x.lineWidth=on?2.5:1; x.strokeStyle=on?ac:ink; x.strokeRect(-w/2,-d/2,w,d); x.beginPath(); x.moveTo(0,0); x.lineTo(0,d/2); x.stroke();
+    x.restore();
   });
-  if(G&&G.k==='wall'){x.strokeStyle=ac; x.lineWidth=5; x.beginPath(); x.moveTo(P.ox+G.x0*P.s,P.oy+G.z0*P.s); x.lineTo(P.ox+G.x1*P.s,P.oy+G.z1*P.s); x.stroke();}
-  if(G&&G.k==='draw'){x.setLineDash([5,4]); x.strokeStyle=ac; x.lineWidth=2;
-    x.strokeRect(P.ox+Math.min(G.x0,G.x1)*P.s,P.oy+Math.min(G.z0,G.z1)*P.s,Math.abs(G.x1-G.x0)*P.s,Math.abs(G.z1-G.z0)*P.s); x.setLineDash([]);}
+  /* 部屋の名前と広さ */
+  x.textAlign='center'; x.textBaseline='middle';
+  geo.faces.forEach(function(fc){
+    var px=SX(fc.c.x), py=SY(fc.c.z); x.font='600 13px '+font; var tw=Math.max(x.measureText(fc.room.name).width,70)+10; x.globalAlpha=0.72; x.fillStyle=bg; x.fillRect(px-tw/2,py-17,tw,34); x.globalAlpha=1; x.fillStyle=ink; x.fillText(fc.room.name,px,py-7);
+    x.font='11px '+font; x.fillStyle=muted; x.fillText(fc.area.toFixed(1)+'㎡ ・ '+(fc.area/1.62).toFixed(1)+'畳',px,py+9);
+  });
+    x.textAlign='left'; x.textBaseline='alphabetic';
+  var w0=sw&&wall(sw); if(w0&&w0.floor===S.floor){hdl(SX(w0.x1),SY(w0.z1)); hdl(SX(w0.x2),SY(w0.z2));}
+  /* なぞっている途中の線 */
+  if(G&&G.k==='wall'){
+    x.strokeStyle=ac; x.lineWidth=Math.max(3,WALLT*s); x.lineCap='square'; x.beginPath(); x.moveTo(SX(G.x0),SY(G.z0)); x.lineTo(SX(G.x1),SY(G.z1)); x.stroke(); x.lineCap='butt';
+    var gl=Math.hypot(G.x1-G.x0,G.z1-G.z0); if(gl>0.05){x.font='600 12px '+font; x.fillStyle=ac; x.fillText(gl.toFixed(2)+' m',SX(G.x1)+10,SY(G.z1)-10);}
+  }
+  if(G&&G.k==='rect'){x.setLineDash([5,4]); x.strokeStyle=ac; x.lineWidth=2;
+    x.strokeRect(SX(Math.min(G.x0,G.x1)),SY(Math.min(G.z0,G.z1)),Math.abs(G.x1-G.x0)*s,Math.abs(G.z1-G.z0)*s); x.setLineDash([]);
+    x.font='600 12px '+font; x.fillStyle=ac; x.fillText(Math.abs(G.x1-G.x0).toFixed(2)+' × '+Math.abs(G.z1-G.z0).toFixed(2)+' m',SX(Math.max(G.x0,G.x1))+8,SY(Math.max(G.z0,G.z1))+16);}
+  if(G&&G.k==='gapdraw'){var ga=wpt(G.w,Math.min(G.a,G.b)), gb=wpt(G.w,Math.max(G.a,G.b)); x.strokeStyle=ac; x.lineWidth=7; x.beginPath(); x.moveTo(SX(ga.x),SY(ga.z)); x.lineTo(SX(gb.x),SY(gb.z)); x.stroke();}
+}
+/* なぞる点を、壁の端・壁の上・45度刻み・5cmのマス目に吸い付ける */
+function snapPt(x,z,from,skip){
+  var n=nearNode(S.floor,x,z,14/P.s,skip); if(n) return {x:n.x,z:n.z};
+  var px=snap(x), pz=snap(z), dir=null;
+  if(from){
+    var dx=x-from.x, dz=z-from.z, L=Math.hypot(dx,dz), a=Math.atan2(dz,dx), a2=Math.round(a/(Math.PI/4))*(Math.PI/4);
+    if(L>0.05&&Math.abs(a-a2)<0.13){L=snap(L); dir={x:Math.cos(a2),z:Math.sin(a2)}; px=r3(from.x+dir.x*L); pz=r3(from.z+dir.z*L);}
+  }
+  var best=null; floorWalls().forEach(function(w){if(skip&&skip[w.id]) return; var q=segD(w,px,pz); if(q.d<=11/P.s&&(!best||q.d<best.d)) best={d:q.d,w:w,t:q.t};});
+  if(best){
+    var w=best.w;
+    if(dir){var t=segX({x1:from.x,z1:from.z,x2:from.x+dir.x*200,z2:from.z+dir.z*200},w); if(t!=null) return {x:r3(from.x+dir.x*200*t),z:r3(from.z+dir.z*200*t)};}
+    return {x:r3(w.x1+(w.x2-w.x1)*best.t),z:r3(w.z1+(w.z2-w.z1)*best.t)};
+  }
+  return {x:px,z:pz};
 }
 function initPlan(){
   var c=$('plan');
   function world(e){var b=c.getBoundingClientRect(); return {x:(e.clientX-b.left-P.ox)/P.s,z:(e.clientY-b.top-P.oy)/P.s,sx:e.clientX-b.left,sy:e.clientY-b.top};}
   function two(){var a=[]; PP.forEach(function(p){a.push(p);}); return {d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,cx:(a[0].x+a[1].x)/2,cy:(a[0].y+a[1].y)/2};}
-  function hitItem(w){var its=floorItems();for(var i=its.length-1;i>=0;i--){var f=fp(its[i]),m=Math.max(0,(22/P.s-Math.min(f[0],f[1]))/2);
-    if(Math.abs(w.x-its[i].p[0])<=f[0]/2+m&&Math.abs(w.z-its[i].p[1])<=f[1]/2+m)return its[i];}return null;}
+  function sdist(w,x,z){return Math.hypot(w.sx-(P.ox+x*P.s),w.sy-(P.oy+z*P.s));}
+  function hitItem(w){
+    var its=floorItems();
+    for(var i=its.length-1;i>=0;i--){var it=its[i], dx=w.x-it.p[0], dz=w.z-it.p[1], r=it.rot||0, lx=dx*Math.cos(r)-dz*Math.sin(r), lz=dx*Math.sin(r)+dz*Math.cos(r), m=Math.max(0,(22/P.s-Math.min(it.s[0],it.s[2]))/2);
+      if(Math.abs(lx)<=it.s[0]/2+m&&Math.abs(lz)<=it.s[2]/2+m) return it;}
+    return null;
+  }
   c.addEventListener('pointerdown',function(e){
     try{c.setPointerCapture(e.pointerId);}catch(_){}
     var b=c.getBoundingClientRect(); PP.set(e.pointerId,{x:e.clientX-b.left,y:e.clientY-b.top});
-    if(PP.size===2){var t=two(); G={k:'pinch',d0:t.d,s0:P.s,wx:(t.cx-P.ox)/P.s,wz:(t.cy-P.oy)/P.s}; return;}
-    var w=world(e);
-    if(P.mode==='draw'){G={k:'draw',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
-    if(P.mode==='wall'){
-      /* 近くに壁があれば、その壁の上から引き始める（壁から伸ばす） */
-      var sn=nearWall(S.floor,w.x,w.z,Math.max(0.4,24/P.s)), sx0=sn?(sn.h?snap(sn.px):sn.px):snap(w.x), sz0=sn?(sn.h?sn.pz:snap(sn.pz)):snap(w.z);
-      G={k:'wall',x0:sx0,z0:sz0,x1:sx0,z1:sz0}; return;
-    }
-    if(P.mode==='gap'){
-      var gn0=nearWall(S.floor,w.x,w.z,Math.max(0.5,28/P.s));
-      if(gn0) G={k:'gapdraw',n:gn0,a:snap(gn0.pos),b:snap(gn0.pos)}; else{$('pstat').textContent='消したい壁の上を、消す範囲だけなぞってください。'; G={k:'none'};}
+    if(PP.size===2){var t=two(); G={k:'pinch',d0:t.d,s0:P.s,wx:(t.cx-P.ox)/P.s,wz:(t.cy-P.oy)/P.s}; drawPlan(); return;}
+    var w=world(e), m=P.mode, n, d1, d2;
+    if(m==='wall'){var p=snapPt(w.x,w.z,null,null); G={k:'wall',x0:p.x,z0:p.z,x1:p.x,z1:p.z}; return;}
+    if(m==='rect'){G={k:'rect',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
+    if(m==='gap'){n=nearWall(S.floor,w.x,w.z,Math.max(0.4,26/P.s)); if(n) G={k:'gapdraw',w:n.w,a:snap(n.pos),b:snap(n.pos)}; else{$('pstat').textContent='消したい壁の上を、消す範囲だけなぞってください。'; G={k:'none'};} return;}
+    if(m==='door'||m==='slide'||m==='window'){
+      var no=addOp(S.floor,w.x,w.z,m,null,Math.max(0.4,26/P.s));
+      if(no){setSel('op',no.id); setMode('select'); G={k:'op',o:no}; $('pstat').textContent=''; refresh();} else{$('pstat').textContent='壁の近くをタップしてください。'; G={k:'none'};}
       return;
     }
-    var eo=selO&&op(selO), eg=eo&&opSeg(eo), d1, d2;
-    if(eg){
-      d1=Math.hypot(w.sx-(P.ox+(eg.h?eg.a:eg.c)*P.s),w.sy-(P.oy+(eg.h?eg.c:eg.a)*P.s)); d2=Math.hypot(w.sx-(P.ox+(eg.h?eg.b:eg.c)*P.s),w.sy-(P.oy+(eg.h?eg.c:eg.b)*P.s));
-      if(Math.min(d1,d2)<18){G={k:'opend',o:eo,end:d1<=d2?'a':'b'}; return;}
-    }
-    var ew=selW&&fwall(selW);
-    if(ew&&ew.floor===S.floor){
-      d1=Math.hypot(w.sx-(P.ox+ew.x1*P.s),w.sy-(P.oy+ew.z1*P.s)); d2=Math.hypot(w.sx-(P.ox+ew.x2*P.s),w.sy-(P.oy+ew.z2*P.s));
-      if(Math.min(d1,d2)<18){G={k:'wend',w:ew,end:d1<=d2?1:2}; return;}
-    }
-    if(P.mode==='door'||P.mode==='slide'||P.mode==='window'){
-      var no=addOp(S.floor,w.x,w.z,P.mode,P.mode==='window'?1.2:0.8,Math.max(0.5,28/P.s));
-      if(no){selO=no.id; selI=selR=selW=null; setMode('select'); G={k:'op',o:no}; $('pstat').textContent=''; refresh();}
-      else{$('pstat').textContent='壁の近くをタップしてください。'; G={k:'none'};}
-      return;
-    }
-    var ho=null, hd=14/P.s; floorOps().forEach(function(o){var g=opSeg(o); if(!g) return; var al=g.h?w.x:w.z, pr=g.h?w.z:w.x, cl=Math.max(g.a,Math.min(g.b,al)), d=Math.hypot(al-cl,pr-g.c); if(d<hd){hd=d; ho=o;}});
-    var hw=null, wd=14/P.s; floorWalls().forEach(function(fw){
-      var lx=fw.x2-fw.x1, lz=fw.z2-fw.z1, l2=lx*lx+lz*lz||1, tt=Math.max(0,Math.min(1,((w.x-fw.x1)*lx+(w.z-fw.z1)*lz)/l2)), d=Math.hypot(w.x-(fw.x1+tt*lx),w.z-(fw.z1+tt*lz));
-      if(d<wd){wd=d; hw=fw;}});
-    if(hw&&!ho){selW=hw.id; selI=selR=null; selO=null; G={k:'fwall',w:hw,px:w.x,pz:w.z}; refresh(); return;}
-    if(ho){selO=ho.id; selI=selR=selW=null; G={k:'op',o:ho}; refresh(); return;}
-    var r=selR&&room(selR);
-    if(r&&r.floor===S.floor&&Math.hypot(w.sx-(P.ox+(r.x+r.w)*P.s),w.sy-(P.oy+(r.z+r.d)*P.s))<20){G={k:'resize',r:r}; return;}
+    /* 選ぶ・動かす */
+    var sw=wall(selIs('wall'));
+    if(sw&&sw.floor===S.floor){d1=sdist(w,sw.x1,sw.z1); d2=sdist(w,sw.x2,sw.z2);
+      if(Math.min(d1,d2)<18){var e1=d1<=d2, sk={}, nx0=e1?sw.x1:sw.x2, nz0=e1?sw.z1:sw.z2;
+        floorWalls().forEach(function(q){if(Math.hypot(q.x1-nx0,q.z1-nz0)<EPS||Math.hypot(q.x2-nx0,q.z2-nz0)<EPS) sk[q.id]=1;});
+        G={k:'node',x:nx0,z:nz0,from:{x:e1?sw.x2:sw.x1,z:e1?sw.z2:sw.z1},skip:sk}; return;}}
+    var so=op(selIs('op')), sp=so&&opSpan(so);
+    if(sp){var A=wpt(sp.w,sp.a), B=wpt(sp.w,sp.b); d1=sdist(w,A.x,A.z); d2=sdist(w,B.x,B.z); if(Math.min(d1,d2)<18){G={k:'opend',o:so,end:d1<=d2?'a':'b'}; return;}}
     var it=hitItem(w);
-    if(it){selI=it.id; selR=null; selO=null; selW=null; G={k:'item',it:it,dx:w.x-it.p[0],dz:w.z-it.p[1]}; refresh(); return;}
-    var rr=roomAt(S.floor,w.x,w.z);
-    if(rr){selR=rr.id; selI=null; selO=null; selW=null; G={k:'room',r:rr,dx:w.x-rr.x,dz:w.z-rr.z}; refresh(); return;}
-    if(selI||selR||selO||selW){selI=selR=selO=selW=null; refresh();}
+    if(it){setSel('item',it.id); G={k:'item',it:it,dx:w.x-it.p[0],dz:w.z-it.p[1]}; refresh(); return;}
+    var ho=null, hd=14/P.s; floorOps().forEach(function(o){var s=opSpan(o), q=segD(s.w,w.x,w.z), pos=q.t*s.L; if(q.d<hd&&pos>=s.a-0.05&&pos<=s.b+0.05){hd=q.d; ho=o;}});
+    if(ho){setSel('op',ho.id); G={k:'op',o:ho}; refresh(); return;}
+    n=nearWall(S.floor,w.x,w.z,12/P.s);
+    if(n){setSel('wall',n.w.id); G={k:'wallmove',w:n.w,px:w.x,pz:w.z}; refresh(); return;}
+    var r=roomAt(S.floor,w.x,w.z);
+    if(r){if(selIs('room')!==r.id){setSel('room',r.id); refresh();} G={k:'pan',x:w.sx,y:w.sy}; return;}
+    if(sel){sel=null; refresh();}
     G={k:'pan',x:w.sx,y:w.sy};
   });
   c.addEventListener('pointermove',function(e){
     var p=PP.get(e.pointerId); if(!p||!G) return;
     var b=c.getBoundingClientRect(); p.x=e.clientX-b.left; p.y=e.clientY-b.top;
-    var w=world(e);
-    if(G.k==='pinch'){if(PP.size<2) return; var t=two(); P.s=Math.max(8,Math.min(300,G.s0*t.d/G.d0)); P.ox=t.cx-G.wx*P.s; P.oy=t.cy-G.wz*P.s;}
-    else if(G.k==='draw'){G.x1=snap(w.x); G.z1=snap(w.z);}
-    else if(G.k==='resize'){G.r.w=Math.max(0.5,snap(w.x-G.r.x)); G.r.d=Math.max(0.5,snap(w.z-G.r.z)); G.ch=true; if($('r-w')){$('r-w').value=r2(G.r.w); $('r-d').value=r2(G.r.d);}}
-    else if(G.k==='wall'){var wx=snap(w.x), wz=snap(w.z); if(Math.abs(wx-G.x0)>=Math.abs(wz-G.z0)){G.x1=wx; G.z1=G.z0;} else {G.x1=G.x0; G.z1=wz;}}
-    else if(G.k==='fwall'){var fdx=snap(w.x-G.px), fdz=snap(w.z-G.pz); if(fdx||fdz){G.w.x1=r2(G.w.x1+fdx); G.w.x2=r2(G.w.x2+fdx); G.w.z1=r2(G.w.z1+fdz); G.w.z2=r2(G.w.z2+fdz); G.px+=fdx; G.pz+=fdz; G.ch=true;}}
-    else if(G.k==='op'){var Ho=host(G.o); if(Ho){var ww=Math.min(G.o.w,Ho.len); G.o.pos=r3(Math.max(ww/2,Math.min(Ho.len-ww/2,snap((Ho.h?w.x:w.z)-Ho.st)))); G.ch=true;}}
-    else if(G.k==='gapdraw'){G.b=Math.max(0,Math.min(G.n.len,snap((G.n.h?w.x:w.z)-G.n.st)));}
-    else if(G.k==='opend'){var He=host(G.o); if(He){
-      var we=Math.min(G.o.w,He.len), pe=Math.max(we/2,Math.min(He.len-we/2,G.o.pos)), A=pe-we/2, B=pe+we/2, ve=Math.max(0,Math.min(He.len,snap((He.h?w.x:w.z)-He.st)));
-      if(G.end==='a') A=Math.min(ve,B-0.2); else B=Math.max(ve,A+0.2);
-      G.o.w=r3(B-A); G.o.pos=r3((A+B)/2); G.ch=true;}}
-    else if(G.k==='wend'){
-      var fwe=G.w, hze=Math.abs(fwe.z2-fwe.z1)<0.001, vw=snap(hze?w.x:w.z), k1=hze?'x1':'z1', k2=hze?'x2':'z2', old=fwe[k1];
-      if(G.end===1){fwe[k1]=r2(Math.min(vw,fwe[k2]-0.2)); var sh=fwe[k1]-old; if(sh) S.ops.forEach(function(o){if(o.wall===fwe.id) o.pos=r3(o.pos-sh);});}
-      else fwe[k2]=r2(Math.max(vw,fwe[k1]+0.2));
-      G.ch=true;}
+    var w=world(e), q, v;
+    if(G.k==='pinch'){if(PP.size<2) return; var t=two(); P.s=clamp(G.s0*t.d/G.d0,8,300); P.ox=t.cx-G.wx*P.s; P.oy=t.cy-G.wz*P.s;}
+    else if(G.k==='wall'){q=snapPt(w.x,w.z,{x:G.x0,z:G.z0},null); G.x1=q.x; G.z1=q.z;}
+    else if(G.k==='rect'){G.x1=snap(w.x); G.z1=snap(w.z);}
+    else if(G.k==='gapdraw'){G.b=clamp(snap(lineT(G.w,w.x,w.z).t*wlen(G.w)),0,wlen(G.w));}
+    else if(G.k==='node'){q=snapPt(w.x,w.z,G.from,G.skip); if(Math.hypot(q.x-G.from.x,q.z-G.from.z)>=0.1&&(q.x!==G.x||q.z!==G.z)){moveNode(S.floor,G.x,G.z,q.x,q.z); G.x=q.x; G.z=q.z; G.ch=true;}}
+    else if(G.k==='wallmove'){var dx=snap(w.x-G.px), dz=snap(w.z-G.pz); if(dx||dz){var W=G.w, a=[W.x1,W.z1,W.x2,W.z2];
+      moveNode(S.floor,a[0],a[1],r3(a[0]+dx),r3(a[1]+dz)); moveNode(S.floor,a[2],a[3],r3(a[2]+dx),r3(a[3]+dz)); W.x1=r3(a[0]+dx); W.z1=r3(a[1]+dz); W.x2=r3(a[2]+dx); W.z2=r3(a[3]+dz); G.px+=dx; G.pz+=dz; G.ch=true;}}
+    else if(G.k==='op'){var s=opSpan(G.o); if(s){var ww=s.b-s.a; G.o.pos=r3(clamp(snap(lineT(s.w,w.x,w.z).t*s.L),ww/2,s.L-ww/2)); G.ch=true;}}
+    else if(G.k==='opend'){var s2=opSpan(G.o); if(s2){var A=s2.a, B=s2.b; v=clamp(snap(lineT(s2.w,w.x,w.z).t*s2.L),0,s2.L);
+      if(G.end==='a') A=Math.min(v,B-0.2); else B=Math.max(v,A+0.2); G.o.w=r3(B-A); G.o.pos=r3((A+B)/2); G.ch=true;}}
     else if(G.k==='item'){G.it.p=[snap(w.x-G.dx),snap(w.z-G.dz)]; G.ch=true;}
-    else if(G.k==='room'){var nx=snap(w.x-G.dx), nz=snap(w.z-G.dz), ddx=nx-G.r.x, ddz=nz-G.r.z;
-      if(ddx||ddz){S.items.forEach(function(it){if(it.room===G.r.id){it.p=[r2(it.p[0]+ddx),r2(it.p[1]+ddz)];}}); G.r.x=nx; G.r.z=nz; G.ch=true;}}
     else if(G.k==='pan'){P.ox+=w.sx-G.x; P.oy+=w.sy-G.y; G.x=w.sx; G.y=w.sy;}
+    if(G.ch&&(G.k==='node'||G.k==='wallmove')) arrange(S.floor);
     drawPlan();
   });
   function up(e){
     PP.delete(e.pointerId); var g=G; if(!g) return;
     if(g.k==='pinch'){if(PP.size<2) G=null; return;}
     G=null;
-    if(g.k==='draw'){
-      var x=Math.min(g.x0,g.x1), z=Math.min(g.z0,g.z1), w=Math.abs(g.x1-g.x0), d=Math.abs(g.z1-g.z0);
-      if(w>=0.4&&d>=0.4){var r={id:nid('r'),floor:S.floor,name:'部屋'+(floorRooms().length+1),x:x,z:z,w:w,d:d,wall:null,fl:null,light:null,lux:50}; S.rooms.push(r); selR=r.id; selI=null; selO=null; selW=null; setMode('select');}
+    if(g.k==='wall'){
+      var made=addWall(S.floor,g.x0,g.z0,g.x1,g.z1);
+      if(made.length){setSel('wall',made[made.length-1].id); $('pstat').textContent='続けて引けます。終わったら「選ぶ・動かす」を押してください。';}
+      refresh(); return;
+    }
+    if(g.k==='rect'){
+      var x0=Math.min(g.x0,g.x1), x1=Math.max(g.x0,g.x1), z0=Math.min(g.z0,g.z1), z1=Math.max(g.z0,g.z1);
+      if(x1-x0>=0.4&&z1-z0>=0.4){addWall(S.floor,x0,z0,x1,z0); addWall(S.floor,x1,z0,x1,z1); addWall(S.floor,x1,z1,x0,z1); addWall(S.floor,x0,z1,x0,z0); sel=null; setMode('select'); arrange(S.floor); var nr=roomAt(S.floor,(x0+x1)/2,(z0+z1)/2); if(nr) setSel('room',nr.id);}
       refresh(); return;
     }
     if(g.k==='gapdraw'){
-      var ga=Math.min(g.a,g.b), gb=Math.max(g.a,g.b), ng=(gb-ga<0.2)?mkOp(g.n,'gap',g.a,0.9):mkOp(g.n,'gap',(ga+gb)/2,gb-ga);
-      selO=ng.id; selI=selR=selW=null; setMode('select'); $('pstat').textContent=''; refresh(); return;
+      var ga=Math.min(g.a,g.b), gb=Math.max(g.a,g.b), ng=(gb-ga<0.2)?mkOp(g.w,'gap',g.a,0.9):mkOp(g.w,'gap',(ga+gb)/2,gb-ga);
+      setSel('op',ng.id); setMode('select'); $('pstat').textContent=''; refresh(); return;
     }
-    if(g.k==='wall'){
-      /* 引き終わりの近くに壁があれば、そこまでぴったり伸ばす */
-      var en=nearWall(S.floor,g.x1,g.z1,0.25); if(en){if(g.z1===g.z0&&!en.h) g.x1=en.c; else if(g.x1===g.x0&&en.h) g.z1=en.c;}
-      if(Math.hypot(g.x1-g.x0,g.z1-g.z0)>=0.3){var nw={id:nid('w'),floor:S.floor,x1:Math.min(g.x0,g.x1),z1:Math.min(g.z0,g.z1),x2:Math.max(g.x0,g.x1),z2:Math.max(g.z0,g.z1),h:WH}; S.walls.push(nw); selW=nw.id; selI=selR=null; selO=null; setMode('select'); $('pstat').textContent='';}
-      refresh(); return;
-    }
-    if(g.k==='item'&&g.ch){var rr=roomAt(S.floor,g.it.p[0],g.it.p[1]); g.it.room=rr?rr.id:null;}
     if(g.ch) refresh(); else drawPlan();
   }
   c.addEventListener('pointerup',up); c.addEventListener('pointercancel',up);
-  c.addEventListener('wheel',function(e){e.preventDefault(); var w=world(e), s=Math.max(8,Math.min(300,P.s*(1-e.deltaY*0.0015))); P.ox=w.sx-w.x*s; P.oy=w.sy-w.z*s; P.s=s; drawPlan();},{passive:false});
+  c.addEventListener('wheel',function(e){e.preventDefault(); var w=world(e), s=clamp(P.s*(1-e.deltaY*0.0015),8,300); P.ox=w.sx-w.x*s; P.oy=w.sy-w.z*s; P.s=s; drawPlan();},{passive:false});
   if(window.ResizeObserver) new ResizeObserver(function(){if(view==='2d')drawPlan();}).observe(c);
 }
-function setMode(m){P.mode=m; [].forEach.call(document.querySelectorAll('[data-a="mode"]'),function(b){b.setAttribute('aria-pressed',String(b.dataset.v===m));});}
+var MODEMSG={wall:'壁の始まりに指を置いて、終わりまでなぞってください。壁の端や壁の上には吸い付きます。斜めも引けます（45度刻みで補正）。',
+  rect:'部屋にしたい範囲を、角から角へ斜めになぞってください（四角い部屋ができます）。',gap:'消したい壁の上を、消す範囲だけなぞってください。',
+  door:'ドアを付けたい壁をタップしてください。',slide:'引き戸を付けたい壁をタップしてください。',window:'窓を付けたい壁をタップしてください。'};
+function setMode(m){P.mode=m; [].forEach.call(document.querySelectorAll('[data-a="mode"]'),function(b){b.setAttribute('aria-pressed',String(b.dataset.v===m));}); $('pstat').textContent=MODEMSG[m]||'';}
 function setView(v){
-  $('pstat').classList.toggle('hide',v!=='2d');
-  view=v; $('view').classList.toggle('hide',v!=='3d'); $('plan').classList.toggle('hide',v!=='2d'); $('tbar').classList.toggle('hide',v!=='2d');
+  view=v; document.body.classList.toggle('ed',v==='2d'); $('view').classList.toggle('hide',v!=='3d'); $('plan').classList.toggle('hide',v!=='2d'); $('tbar').classList.toggle('hide',v!=='2d'); $('pstat').classList.toggle('hide',v!=='2d'); $('v3seg').classList.toggle('hide',v!=='3d');
   [].forEach.call($('viewseg').children,function(b){b.setAttribute('aria-pressed',String(b.dataset.v===v));});
   if(v==='2d'&&!P.fit[S.floor]) fitPlan();
   if(v==='3d'&&T) T.resize();
   refresh();
 }
+/* この階を、選んだ壁の実際の長さに合わせて拡大・縮小する */
+function rescaleFloor(f,k){
+  floorWalls(f).forEach(function(w){w.x1=r3(w.x1*k); w.z1=r3(w.z1*k); w.x2=r3(w.x2*k); w.z2=r3(w.z2*k);});
+  floorOps(f).forEach(function(o){o.pos=r3(o.pos*k);});
+  floorItems(f).forEach(function(i){i.p=[r2(i.p[0]*k),r2(i.p[1]*k)];});
+  S.rooms.forEach(function(r){if(r.floor===f){r.cx=r2(r.cx*k); r.cz=r2(r.cz*k);}});
+  if(S.plans[f]) S.plans[f].wm=S.plans[f].wm*k;
+}
 
 /* ---------- 画面 ---------- */
 function redraw(){
   if(view==='3d'){if(T)T.rebuild();} else drawPlan();
-  $('empty').style.display=(view==='3d'&&T&&!floorRooms().length&&!floorItems().length&&!floorWalls().length)?'flex':'none';
+  $('empty').style.display=(view==='3d'&&T&&!floorWalls().length&&!floorItems().length)?'flex':'none';
   $('planoff').classList.toggle('hide',!IMG['plan:'+S.floor]);
   save();
 }
-function refresh(){renderSum(); renderFloors(); renderChips(); renderList(); renderInv(); renderDeco(); renderRoomOptions(); renderCards(); redraw();}
+function refresh(){tidyWalls(); arrangeAll(); checkSel(); renderSum(); renderFloors(); renderChips(); renderList(); renderInv(); renderDeco(); renderRoomOptions(); renderCards(); redraw();}
+function checkSel(){if(sel&&!({item:item,wall:wall,op:op,room:room})[sel.k](sel.id)) sel=null;}
 function sub(it){return esc(it.maker||'メーカー未入力')+' ・ '+esc(it.model||'型番未入力');}
 function pill(it){return '<span class="pill '+it.st+'">'+STMARK[it.st]+ST[it.st]+'</span>';}
 function renderSum(){var ok=S.items.filter(function(i){return i.st==='ok';}).length; $('sum').textContent=S.items.length+'点 ・ 確認済み '+ok;}
-function renderFloors(){$('floorseg').innerHTML=S.floors.map(function(f){return '<button data-a="floor" data-v="'+f.id+'" aria-pressed="'+(f.id===S.floor)+'">'+esc(f.name)+'</button>';}).join('');}
+function renderFloors(){
+  $('floorseg').innerHTML=S.floors.map(function(f){return '<button data-a="floor" data-v="'+f.id+'" aria-pressed="'+(f.id===S.floor)+'">'+esc(f.name)+'</button>';}).join('');
+  [].forEach.call($('v3seg').children,function(b){b.setAttribute('aria-pressed',String(b.dataset.v===(S.set.view3||'cut')));});
+}
 function renderChips(){
   var h='<button class="chip" data-a="ff" data-v="all" aria-pressed="'+(fFloor==='all')+'">すべて</button>';
   S.floors.forEach(function(f){h+='<button class="chip" data-a="ff" data-v="'+f.id+'" aria-pressed="'+(fFloor===f.id)+'">'+esc(f.name)+'</button>';});
   $('chips').innerHTML=h;
 }
 function renderList(){
-  var q=query.toLowerCase();
+  var q=query.toLowerCase(), si=selIs('item');
   var rows=S.items.filter(function(it){
     if(fFloor!=='all'&&it.floor!==fFloor) return false;
     return !q||(it.name+' '+(it.maker||'')+' '+(it.model||'')+' '+(it.memo||'')).toLowerCase().indexOf(q)>=0;
   });
   $('list').innerHTML=rows.length?rows.map(function(it){
-    return '<li class="row'+(it.id===selI?' sel':'')+'"><button class="main" data-a="sel" data-v="'+it.id+'"><span class="nm">'+esc(it.name)+'</span><span class="sub">'+esc(place(it))+' ・ '+sub(it)+'</span></button>'+pill(it)+'</li>';
+    return '<li class="row'+(it.id===si?' sel':'')+'"><button class="main" data-a="sel" data-v="'+it.id+'"><span class="nm">'+esc(it.name)+'</span><span class="sub">'+esc(place(it))+' ・ '+sub(it)+'</span></button>'+pill(it)+'</li>';
   }).join(''):'<li class="empty">'+(S.items.length?'当てはまる物がありません。':'まだ何も登録されていません。「＋登録」から写真を選んで追加します。')+'</li>';
 }
 function renderInv(){
-  var n=S.items.length, ok=0, miss=0; S.items.forEach(function(i){if(i.st==='ok')ok++; else if(i.st==='missing')miss++;});
+  var n=S.items.length, ok=0, miss=0, si=selIs('item'); S.items.forEach(function(i){if(i.st==='ok')ok++; else if(i.st==='missing')miss++;});
   if(!n){$('inv').innerHTML='<p class="empty">物を登録すると、ここで部屋ごとに「あった／ない」を確認できます。</p>'; return;}
   var done=ok+miss, h='<div class="prog"><div class="nums"><span class="big">'+done+' / '+n+'</span><span class="rest">確認済み '+ok+' ・ 見つからない '+miss+' ・ 残り '+(n-done)+'</span><button class="btn sm reset" data-a="invreset">やり直す</button></div><div class="bar"><i style="width:'+Math.round(done/n*100)+'%"></i></div></div>';
-  var groups=[]; S.floors.forEach(function(f){floorRooms(f.id).forEach(function(r){groups.push({t:f.name+' '+r.name,its:S.items.filter(function(i){return i.room===r.id;})});});});
-  groups.push({t:'部屋の外',its:S.items.filter(function(i){return !i.room||!room(i.room);})});
-  groups.forEach(function(g){
-    if(!g.its.length) return;
-    var d=g.its.filter(function(i){return i.st!=='none';}).length;
+  var groups={}, order=[];
+  S.items.forEach(function(it){var r=roomOf(it), k=r?r.id:'_', t=r?floorName(r.floor)+' '+r.name:'部屋の外'; if(!groups[k]){groups[k]={t:t,its:[]}; order.push(k);} groups[k].its.push(it);});
+  order.sort(function(a,b){return a==='_'?1:(b==='_'?-1:(groups[a].t<groups[b].t?-1:1));});
+  order.forEach(function(k){
+    var g=groups[k], d=g.its.filter(function(i){return i.st!=='none';}).length;
     h+='<h3>'+esc(g.t)+'<span>'+d+' / '+g.its.length+'</span></h3><ul class="rows">';
     g.its.forEach(function(it){
-      h+='<li class="row'+(it.id===selI?' sel':'')+'"><button class="main" data-a="sel" data-v="'+it.id+'"><span class="nm">'+esc(it.name)+'</span><span class="sub">'+esc(it.model||'型番未入力')+'</span></button>'
+      h+='<li class="row'+(it.id===si?' sel':'')+'"><button class="main" data-a="sel" data-v="'+it.id+'"><span class="nm">'+esc(it.name)+'</span><span class="sub">'+esc(it.model||'型番未入力')+'</span></button>'
         +'<button class="btn sm" data-a="st" data-v="ok" data-id="'+it.id+'" aria-pressed="'+(it.st==='ok')+'">✓ あった</button>'
         +'<button class="btn sm" data-a="st" data-v="missing" data-id="'+it.id+'" aria-pressed="'+(it.st==='missing')+'">ない</button></li>';
     });
@@ -842,9 +1115,10 @@ function renderInv(){
   });
   $('inv').innerHTML=h;
 }
+function stp(label,key,val){return '<label>'+label+'<span class="stp"><button type="button" data-a="step" data-k="'+key+'" data-d="-1" aria-label="'+label+'を減らす">−</button>'
+  +'<input type="text" inputmode="decimal" data-sf="'+key+'" value="'+val+'"><button type="button" data-a="step" data-k="'+key+'" data-d="1" aria-label="'+label+'を増やす">＋</button></span></label>';}
 function renderCards(){
-  var d=$('detail'), it=selI&&item(selI), rc=$('rcard'), r=(view==='2d'&&selR)?room(selR):null;
-  if(it||r||selO||selW) $('pstat').textContent='';
+  var d=$('detail'), rc=$('rcard'), it=item(selIs('item')), X='<button class="x" data-a="desel" aria-label="閉じる">×</button>', h='';
   if(it){
     d.className='card on';
     d.innerHTML=(IMG[it.id]?'<img src="'+IMG[it.id]+'" alt="">':'')
@@ -856,52 +1130,48 @@ function renderCards(){
       +(it.memo?'<dt>メモ</dt><dd>'+esc(it.memo)+'</dd>':'')+'</dl>'
       +'<div class="acts"><button class="btn sm" data-a="st" data-v="ok" data-id="'+it.id+'" aria-pressed="'+(it.st==='ok')+'">✓ あった</button>'
       +'<button class="btn sm" data-a="st" data-v="missing" data-id="'+it.id+'" aria-pressed="'+(it.st==='missing')+'">ない</button>'
-      +'<button class="btn sm" data-a="rot">向きを回す</button><button class="btn sm" data-a="edit">編集</button></div>'
+      +'<button class="btn sm" data-a="rot" data-v="90">90°回す</button><button class="btn sm" data-a="rot" data-v="15">15°</button><button class="btn sm" data-a="edit">編集</button></div>'
       +(view==='2d'?'<div class="acts"><span class="rs" style="flex:none;min-width:0">5cmずつ動かす</span>'
         +'<button class="btn sm" data-a="nudge" data-dx="-1" data-dz="0" aria-label="左へ">←</button><button class="btn sm" data-a="nudge" data-dx="0" data-dz="-1" aria-label="奥へ">↑</button>'
-        +'<button class="btn sm" data-a="nudge" data-dx="0" data-dz="1" aria-label="手前へ">↓</button><button class="btn sm" data-a="nudge" data-dx="1" data-dz="0" aria-label="右へ">→</button></div>':'')+'</div>'
-      +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
+        +'<button class="btn sm" data-a="nudge" data-dx="0" data-dz="1" aria-label="手前へ">↓</button><button class="btn sm" data-a="nudge" data-dx="1" data-dz="0" aria-label="右へ">→</button></div>':'')+'</div>'+X;
   }else{d.className='card'; d.innerHTML='';}
-  function stp(label,key,val,id){return '<label>'+label+'<span class="stp"><button type="button" data-a="step" data-k="'+key+'" data-d="-1" aria-label="'+label+'を減らす">−</button>'
-    +'<input type="text" inputmode="decimal"'+(id?' id="'+id+'"':'')+' data-sf="'+key+'" value="'+val+'"><button type="button" data-a="step" data-k="'+key+'" data-d="1" aria-label="'+label+'を増やす">＋</button></span></label>';}
-  var o=(view==='2d'&&selO)?op(selO):null, fw=(view==='2d'&&selW)?fwall(selW):null;
-  if(fw&&!it){
-    rc.className='card on';
-    rc.innerHTML='<div class="body"><div class="rgrid">'+stp('長さ m','wall.len',r2(Math.abs(fw.x2-fw.x1)+Math.abs(fw.z2-fw.z1)))+stp('高さ m','wall.h',r2(fw.h||WH))+'</div>'
-      +'<div class="scale"><span class="rs">真ん中をドラッグで移動、両端の■で長さを調整</span><button class="btn sm danger" data-a="delwall">壁を削除</button></div></div>'
-      +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
-  }else if(o&&!it){
-    rc.className='card on';
-    rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">種類<select data-of="kind"><option value="door"'+(o.kind==='door'?' selected':'')+'>ドア（開き戸）</option><option value="slide"'+(o.kind==='slide'?' selected':'')+'>引き戸</option><option value="window"'+(o.kind==='window'?' selected':'')+'>窓</option><option value="gap"'+(o.kind==='gap'?' selected':'')+'>壁なし（開口）</option></select></label>'
-      +stp('幅 m','op.w',r2(o.w))+stp('位置 m','op.pos',r2(o.pos))+'</div>'
+  var w=view==='2d'&&wall(selIs('wall')), o=view==='2d'&&op(selIs('op')), r=view==='2d'&&room(selIs('room'));
+  if(w){
+    h='<div class="body"><div class="rgrid">'+stp('長さ m','wall.len',wlen(w).toFixed(2))+stp('高さ m','wall.h',r2(w.h||WALLH))+stp('厚み m','wall.t',r2(w.t||WALLT))
+      +'<label>実際の長さ m<span class="stp"><input type="text" inputmode="decimal" id="w-real" placeholder="縮尺合わせ"></span></label></div>'
+      +'<div class="scale"><button class="btn sm" data-a="rescale">この階の縮尺を合わせる</button><span class="rs">両端の■で形を変える</span><button class="btn sm danger" data-a="delwall">壁を削除</button></div></div>'+X;
+  }else if(o){
+    var sp=opSpan(o);
+    h='<div class="body"><div class="rgrid"><label class="full">種類<select data-of="kind">'+Object.keys(OPK).map(function(k){return '<option value="'+k+'"'+(o.kind===k?' selected':'')+'>'+OPK[k]+'</option>';}).join('')+'</select></label>'
+      +stp('幅 m','op.w',r2(o.w))+stp('位置 m','op.pos',r2(o.pos))
+      +(o.kind==='window'?stp('下端の高さ m','op.sill',r2(sp.sill)):'')+(o.kind!=='gap'?stp('上端の高さ m','op.top',r2(sp.top)):'')+'</div>'
       +'<div class="scale">'+(o.kind==='door'?'<button class="btn sm" data-a="flip" data-v="hinge">左右を反転</button><button class="btn sm" data-a="flip" data-v="out">内外を反転</button>':(o.kind==='slide'?'<button class="btn sm" data-a="flip" data-v="hinge">左右を反転</button>':''))
-      +'<span class="grow"></span><button class="btn sm danger" data-a="delop">削除</button></div></div>'
-      +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
-  }else if(r&&!it){
-    rc.className='card on';
-    rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">部屋の名前<input type="text" id="r-name" data-rf="name" value="'+esc(r.name)+'"></label>'
-      +stp('幅 m','room.w',r2(r.w),'r-w')+stp('奥行 m','room.d',r2(r.d),'r-d')+stp('壁の高さ m','room.h',r2(r.wh||WH))
-      +'<label>壁（押すと外す／戻す）<span class="stp">'+[['n','奥'],['s','手前'],['w','左'],['e','右']].map(function(q){return '<button type="button" class="sd" data-a="side" data-v="'+q[0]+'" aria-pressed="'+!(r.off&&r.off[q[0]])+'">'+q[1]+'</button>';}).join('')+'</span></label></div>'
-      +'<div class="scale"><label>この部屋の実際の幅 m<input type="text" inputmode="decimal" id="r-real"></label><button class="btn sm" data-a="rescale">この階の縮尺を合わせる</button>'
-      +'<span class="grow"></span><button class="btn sm danger" data-a="delroom">部屋を削除</button></div></div>'
-      +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
-  }else{rc.className='card'; rc.innerHTML='';}
+      +'<span class="grow"></span><button class="btn sm danger" data-a="delop">削除</button></div></div>'+X;
+  }else if(r){
+    var fc=faceOf(r);
+    h='<div class="body"><div class="rgrid"><label class="full">部屋の名前<input type="text" data-rn="1" value="'+esc(r.name)+'"></label>'
+      +'<label>床材<select data-rfk="'+r.id+'">'+Object.keys(FLOORK).map(function(k){return '<option value="'+k+'"'+((r.fk||'plain')===k?' selected':'')+'>'+FLOORK[k]+'</option>';}).join('')+'</select></label>'
+      +'<label>広さ<span class="val">'+(fc?fc.area.toFixed(1)+'㎡ ・ '+(fc.area/1.62).toFixed(1)+'畳':'—')+'</span></label></div>'
+      +'<div class="scale"><button class="btn sm" data-a="godeco">壁紙・床・照明の色</button><span class="rs">形は壁を動かして変える</span></div></div>'+X;
+  }
+  if(h&&!it){rc.className='card on'; rc.innerHTML=h; $('pstat').textContent='';} else{rc.className='card'; rc.innerHTML='';}
 }
 function renderRoomOptions(){
-  var el=$('f-room'), v=el.value, h='<option value="">（部屋の外・今の階）</option>';
-  S.floors.forEach(function(f){floorRooms(f.id).forEach(function(r){h+='<option value="'+r.id+'">'+esc(f.name+' '+r.name)+'</option>';});});
+  var el=$('f-room'), v=el.value, h='<option value="">（今の場所のまま／部屋の外）</option>';
+  S.floors.forEach(function(f){liveRooms(f.id).forEach(function(r){h+='<option value="'+r.id+'">'+esc(f.name+' '+r.name)+'</option>';});});
   el.innerHTML=h; el.value=v; if(el.value!==v) el.value='';
 }
 function renderDeco(){
-  var rs=floorRooms(), h='<p class="lead">'+esc(floorName(S.floor))+'の内装です。色を変えるとすぐ反映されます。部屋の写真を選ぶと、壁紙・床・照明の色を自動で入れます。</p>';
-  if(!rs.length) h+='<p class="empty">この階にはまだ部屋がありません。</p>';
+  var rs=liveRooms(), h='<p class="lead">'+esc(floorName(S.floor))+'の内装です。色を変えるとすぐ反映されます。部屋の写真を選ぶと、壁紙・床・照明の色を自動で入れます。</p>';
+  if(!rs.length) h+='<p class="empty">この階にはまだ部屋がありません。壁で囲むと部屋になります。</p>';
   rs.forEach(function(r,i){
     var a=' data-rid="'+r.id+'"';
     h+='<h3>'+esc(r.name)+'</h3><div class="deco">'
-      +'<label>壁紙<input type="color" id="dw-'+r.id+'"'+a+' data-rk="wall" value="'+(r.wall||css('--wall')).toLowerCase()+'"></label>'
-      +'<label>床<input type="color" id="df-'+r.id+'"'+a+' data-rk="fl" value="'+(r.fl||css(i%2?'--floor2':'--floor')).toLowerCase()+'"></label>'
-      +'<label>照明の色<input type="color" id="dl-'+r.id+'"'+a+' data-rk="light" value="'+(r.light||'#ffffff').toLowerCase()+'"></label>'
-      +'<label class="lux">照明の明るさ<input type="range" min="0" max="100"'+a+' data-rk="lux" value="'+(r.lux==null?50:r.lux)+'"></label></div>'
+      +'<label>壁紙<input type="color"'+a+' data-rk="wall" value="'+(r.wall||css('--wall')).toLowerCase()+'"></label>'
+      +'<label>床の色<input type="color"'+a+' data-rk="fl" value="'+floorColor(r,i).toLowerCase()+'"></label>'
+      +'<label>照明の色<input type="color"'+a+' data-rk="light" value="'+(r.light||'#ffffff').toLowerCase()+'"></label>'
+      +'<label>床材<select data-rfk="'+r.id+'">'+Object.keys(FLOORK).map(function(k){return '<option value="'+k+'"'+((r.fk||'plain')===k?' selected':'')+'>'+FLOORK[k]+'</option>';}).join('')+'</select></label>'
+      +'<label class="lux2">照明の明るさ<input type="range" min="0" max="100"'+a+' data-rk="lux" value="'+(r.lux==null?50:r.lux)+'"></label></div>'
       +'<div class="chips">'+LIGHTS.map(function(l){return '<button class="chip" data-a="light" data-v="'+l[1]+'"'+a+'>'+l[0]+'</button>';}).join('')+'</div>'
       +'<div class="pickrow sec"><label class="filebtn"><input type="file" accept="image/*" data-roomphoto="'+r.id+'"><span class="btn sm">部屋の写真から自動で反映</span></label>'
       +'<button class="btn sm" data-a="decoreset"'+a+'>もとに戻す</button><span class="rs" id="rs-'+r.id+'" role="status"></span></div>';
@@ -909,7 +1179,7 @@ function renderDeco(){
   $('deco').innerHTML=h;
 }
 function showTab(name){['items','inv','form','deco','set'].forEach(function(t){$('t-'+t).setAttribute('aria-selected',String(t===name)); $('p-'+t).className='pane'+(t===name?' on':'');});}
-function selectItem(id){var it=item(id); if(!it) return; selI=id; selR=null; selO=null; selW=null; if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;} if(view==='2d'&&!P.fit[S.floor]) fitPlan(); refresh();}
+function selectItem(id){var it=item(id); if(!it) return; setSel('item',id); if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;} if(view==='2d'&&!P.fit[S.floor]) fitPlan(); refresh();}
 
 /* ---------- 写真・AI ---------- */
 function toJpeg(file,max){
@@ -932,8 +1202,7 @@ function avg(c,x0,y0,x1,y1){
   function hx(v){v=Math.round(v/n).toString(16); return v.length<2?'0'+v:v;}
   return '#'+hx(r)+hx(g)+hx(b);
 }
-var API='https://generativelanguage.googleapis.com/v1beta/models';
-var FALLBACKS=['gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite'];
+var API='https://generativelanguage.googleapis.com/v1beta/models', FALLBACKS=['gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite'];
 async function geminiOne(model,prompt,dataUrl){
   var res=await fetch(API+'/'+encodeURIComponent(model.replace(/^models\//,''))+':generateContent',{method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':S.set.key},
@@ -958,10 +1227,8 @@ var PROMPT='写真に写っている主な家電・家具を1つだけ判定し�
  +'キー: name（日本語の一般的な呼び名）, type（次のどれか1つ: '+Object.keys(TYPES).join(',')+'。当てはまらなければ box）, '
  +'maker（写真の中の文字として読み取れた場合だけ。読めなければ空文字）, model（型番が文字として読み取れた場合だけ。読めなければ空文字）, '
  +'width_cm, height_cm, depth_cm（見た目からの目安。数値）, color_hex（本体の主な色。#RRGGBB）。メーカー名や型番を推測で作らないこと。';
-var ROOMPROMPT='この部屋の写真から、壁（壁紙）の主な色、床の主な色、照明の色味を判定し、JSONオブジェクトだけで答えてください。'
- +'キー: wall_hex, floor_hex（どちらも #RRGGBB）, light（電球色, 温白色, 昼白色, 昼光色, 不明 のどれか1つ。照明がついていない・判断できない場合は 不明）。';
-
-/* ---------- 間取り図から部屋を自動作成 ---------- */
+var ROOMPROMPT='この部屋の写真から、壁（壁紙）の主な色、床の主な色、床材、照明の色味を判定し、JSONオブジェクトだけで答えてください。'
+ +'キー: wall_hex, floor_hex（どちらも #RRGGBB）, floor_kind（wood=フローリング, tatami=畳, tile=タイル, plain=その他 のどれか）, light（電球色, 温白色, 昼白色, 昼光色, 不明 のどれか1つ。照明がついていない・判断できない場合は 不明）。';
 var PLANPROMPT='これは住宅の間取り図の画像です。図の中の部屋・スペースをすべて見つけ、JSONオブジェクトだけで答えてください。'
  +'形式: {"rooms":[{"name":部屋名（図の表記に合わせる。例: LDK, 洋室, 和室, キッチン, 玄関, 浴室, 洗面, トイレ, 階段, 廊下, 収納, バルコニー）, '
  +'"floor":階（1 や 2 の数値。図に階の表記がなければ 1）, "jo":畳数（図にその部屋の帖・畳の数字が書かれている場合だけ数値。なければ null）, '
@@ -969,8 +1236,16 @@ var PLANPROMPT='これは住宅の間取り図の画像です。図の中の部�
  +'"openings":[{"type":"door"（開き戸・玄関ドア）か "slide"（引き戸）か "window"（窓・掃き出し窓）, "floor":階, "box_2d":[ymin,xmin,ymax,xmax]（そのドアや窓を囲む長方形）}]（図から読み取れるものだけ。なければ空の配列）, '
  +'"image_width_m":画像の横幅全体が実際の何メートルに当たるか（寸法の表記から分かる場合だけ数値。分からなければ null）}。'
  +'L字など長方形でない部屋は、重ならない長方形2つに分けて同じ名前で返す。部屋どうしの長方形は重ねない。図に書かれていない部屋を作らない。';
-var autoArm=0;
-function loadImg(src){return new Promise(function(res,rej){var im=new Image(); im.onload=function(){res(im);}; im.onerror=function(){rej(new Error('image'));}; im.src=src;});}
+
+/* 階の間取り（壁・ドア窓・部屋）を空にする。物は残す */
+function clearFloor(f){
+  var ids={}; S.walls.forEach(function(w){if(w.floor===f) ids[w.id]=1;});
+  S.walls=S.walls.filter(function(w){return !ids[w.id];}); S.ops=S.ops.filter(function(o){return !ids[o.wall];}); S.rooms=S.rooms.filter(function(r){return r.floor!==f;});
+}
+function rectRoom(f,x0,z0,x1,z1,attrs){
+  addWall(f,x0,z0,x1,z0); addWall(f,x1,z0,x1,z1); addWall(f,x1,z1,x0,z1); addWall(f,x0,z1,x0,z0);
+  var r=Object.assign({id:nid('r'),floor:f,name:'部屋',cx:r2((x0+x1)/2),cz:r2((z0+z1)/2),fl:null,fk:'plain',wall:null,light:null,lux:50},attrs||{}); S.rooms.push(r); return r;
+}
 function cluster(vs){
   vs=vs.slice().sort(function(a,b){return a-b;}); var g=[], cur=[vs[0]], i;
   for(i=1;i<vs.length;i++){if(vs[i]-cur[cur.length-1]<=0.2) cur.push(vs[i]); else{g.push(cur); cur=[vs[i]];}}
@@ -978,11 +1253,13 @@ function cluster(vs){
   var cs=g.map(function(c){return snap(c.reduce(function(a,b){return a+b;},0)/c.length);});
   return function(v){var best=cs[0]; cs.forEach(function(c){if(Math.abs(c-v)<Math.abs(best-v)) best=c;}); return best;};
 }
+function loadImg(src){return new Promise(function(res,rej){var im=new Image(); im.onload=function(){res(im);}; im.onerror=function(){rej(new Error('image'));}; im.src=src;});}
+var autoArm=0;
 async function planAuto(){
   var st=$('pstat'), k='plan:'+S.floor, src=IMG[k];
   if(!S.set.key){st.textContent='自動作成にはGeminiのAPIキーが必要です。「設定」で入れてください。'; return;}
   if(!src){$('planautofile').click(); return;}
-  if(S.rooms.length&&Date.now()-autoArm>8000){autoArm=Date.now(); st.textContent='読み取った階に今ある部屋は、新しい部屋に置き換わります（物は残ります）。よければ、もう一度「図から自動作成」を押してください。'; return;}
+  if(S.walls.length&&Date.now()-autoArm>8000){autoArm=Date.now(); st.textContent='読み取った階に今ある壁と部屋は、新しいものに置き換わります（物は残ります。「元に戻す」でも戻せます）。よければ、もう一度「図から自動作成」を押してください。'; return;}
   autoArm=0; st.textContent='AIが間取り図を読み取っています…（数十秒かかることがあります）';
   try{
     var res=await gemini(PLANPROMPT,src), list=(res&&res.rooms)||(Array.isArray(res)?res:[]);
@@ -993,55 +1270,47 @@ async function planAuto(){
       if(y0==null||x0==null||y1==null||x1==null||x1-x0<10||y1-y0<10) return;
       rs.push({name:String(o.name||'部屋').slice(0,20),fn:parseInt(o.floor,10)||1,jo:num(o.jo,0.5,100),x0:x0/1000,x1:x1/1000,y0:y0/1000,y1:y1/1000});
     });
-    if(!rs.length){st.textContent='部屋を読み取れませんでした。図がはっきり写った画像で試すか、「部屋を描く」でなぞってください。'; return;}
-    /* 縮尺: 畳数（1畳=1.62㎡）が読めた部屋から求める。なければ寸法の表記、それもなければ仮の値 */
+    if(!rs.length){st.textContent='部屋を読み取れませんでした。図がはっきり写った画像で試すか、「壁を引く」でなぞってください。'; return;}
     var est=[]; rs.forEach(function(q){if(q.jo) est.push(Math.sqrt(q.jo*1.62/((q.x1-q.x0)*(q.y1-q.y0)*asp)));});
     est.sort(function(a,b){return a-b;});
     var given=num(res&&res.image_width_m,2,100), wm=est.length?est[Math.floor(est.length/2)]:(given||planCfg().wm||10);
-    var how=est.length?'畳数から推定':(given?'寸法の表記から推定':'仮の値。部屋を選んで実際の幅を入れると合わせられます');
-    wm=Math.max(3,Math.min(100,wm));
+    var how=est.length?'畳数から推定':(given?'寸法の表記から推定':'仮の値。壁を選んで実際の長さを入れると合わせられます');
+    wm=clamp(wm,3,100);
     var same=rs.every(function(q){return q.fn===rs[0].fn;}), targets={};
     rs.forEach(function(q){q.f=same?S.floor:(q.fn===2?'f2':(q.fn===1?'f1':S.floor)); targets[q.f]=1;});
-    Object.keys(targets).forEach(function(f){
-      S.ops=S.ops.filter(function(o){return o.wall||(room(o.room)&&room(o.room).floor!==f);});
-      S.rooms=S.rooms.filter(function(x){return x.floor!==f;});
-      if(!S.plans[f]) S.plans[f]={}; S.plans[f].wm=wm; if(f!==S.floor) imgPut('plan:'+f,src); P.fit[f]=false;
-    });
+    Object.keys(targets).forEach(function(f){clearFloor(f); if(!S.plans[f]) S.plans[f]={}; S.plans[f].wm=wm; if(f!==S.floor) imgPut('plan:'+f,src); P.fit[f]=false;});
     var xs=[], zs=[]; rs.forEach(function(q){xs.push(q.x0*wm,q.x1*wm); zs.push(q.y0*wm*asp,q.y1*wm*asp);});
-    var fx=cluster(xs), fz=cluster(zs), n=0;
-    rs.forEach(function(q){
-      var x=fx(q.x0*wm), x2=fx(q.x1*wm), z=fz(q.y0*wm*asp), z2=fz(q.y1*wm*asp); if(x2-x<0.3||z2-z<0.3) return;
-      S.rooms.push({id:nid('r'),floor:q.f,name:q.name,x:x,z:z,w:r2(x2-x),d:r2(z2-z),wall:null,fl:null,light:null,lux:50}); n++;
-    });
-    S.items.forEach(function(it){var rr=roomAt(it.floor,it.p[0],it.p[1]); it.room=rr?rr.id:null;});
-    var no=0;
+    var fx=cluster(xs), fz=cluster(zs), n=0, no=0;
+    rs.forEach(function(q){var x=fx(q.x0*wm), x2=fx(q.x1*wm), z=fz(q.y0*wm*asp), z2=fz(q.y1*wm*asp); if(x2-x<0.3||z2-z<0.3) return; rectRoom(q.f,x,z,x2,z2,{name:q.name}); n++;});
     ((res&&res.openings)||[]).forEach(function(o){
       var b=o&&o.box_2d; if(!b||b.length!==4) return;
       var y0=num(b[0],0,1000), x0=num(b[1],0,1000), y1=num(b[2],0,1000), x1=num(b[3],0,1000); if(y0==null||x0==null||y1==null||x1==null) return;
       var fn=parseInt(o.floor,10)||1, f=same?S.floor:(fn===2?'f2':(fn===1?'f1':S.floor)); if(!targets[f]) return;
       var len=Math.max((x1-x0)/1000*wm,(y1-y0)/1000*wm*asp), kind=(o.type==='window'||o.type==='slide')?o.type:'door';
-      if(addOp(f,(x0+x1)/2000*wm,(y0+y1)/2000*wm*asp,kind,Math.max(0.5,Math.min(kind==='window'?3.6:1.8,len)),0.6)) no++;
+      if(addOp(f,(x0+x1)/2000*wm,(y0+y1)/2000*wm*asp,kind,clamp(len,0.5,kind==='window'?3.6:1.8),0.6)) no++;
     });
-    selI=selR=selO=selW=null; fitNext=true; fitPlan(); refresh();
-    st.textContent='部屋を'+n+'個'+(no?'、ドア・窓を'+no+'個':'')+'作りました'+(Object.keys(targets).length>1?'（1階と2階に振り分け）':'')+'。縮尺は'+how+'。AIの読み取りなので、ずれている所は「選ぶ・動かす」で直してください。';
+    sel=null; fitNext=true; fitPlan(); refresh();
+    st.textContent='部屋を'+n+'個'+(no?'、ドア・窓を'+no+'個':'')+'作りました'+(Object.keys(targets).length>1?'（1階と2階に振り分け）':'')+'。縮尺は'+how+'。AIの読み取りなので、ずれている所は壁を選んで直してください。';
   }catch(err){st.textContent='読み取りに失敗しました（'+(err&&err.message||'通信エラー')+'）。少し待ってもう一度試してください。';}
 }
 
 /* ---------- 登録・編集フォーム ---------- */
-var E={id:null,photo:null,pa:1}, job=0;
+var E={id:null,photo:null,pa:1,glb:null}, job=0;
 function setSize(a){$('f-w').value=a[0]; $('f-h').value=a[1]; $('f-d').value=a[2];}
 function openForm(it){
-  ++job; E={id:it?it.id:null,photo:null,pa:it?(it.pa||1):1};
+  ++job; E={id:it?it.id:null,photo:null,pa:it?(it.pa||1):1,glb:null};
   $('f-title').textContent=it?'「'+it.name+'」を編集':'新しく登録';
   $('f-name').value=it?it.name:''; $('f-maker').value=it?(it.maker||''):''; $('f-model').value=it?(it.model||''):'';
   $('f-type').value=it?(it.t||'box'):'box';
-  renderRoomOptions(); $('f-room').value=it?(it.room||''):(selR||''); if($('f-room').value==null) $('f-room').value='';
+  renderRoomOptions(); var cr=it?roomOf(it):room(selIs('room')); $('f-room').value=cr?cr.id:''; E.room0=$('f-room').value;
   setSize(it?[Math.round(it.s[0]*100),Math.round(it.s[1]*100),Math.round(it.s[2]*100)]:DEF.box);
   $('f-y').value=it?Math.round((it.y||0)*100):0;
   $('f-color').value=(it&&it.color?it.color:css('--item')).toLowerCase();
   $('f-bought').value=it?(it.bought||''):''; $('f-warranty').value=it?(it.warranty||''):''; $('f-memo').value=it?(it.memo||''):'';
   var src=it&&IMG[it.id]; $('prev').src=src||''; $('prev').classList.toggle('hide',!src);
-  $('f-del').classList.toggle('hide',!it); $('f-note').textContent=''; $('f-stat').textContent=''; $('f-file').value='';
+  $('f-del').classList.toggle('hide',!it); $('f-note').textContent=''; $('f-stat').textContent=''; $('f-file').value=''; $('f-glb').value='';
+  $('f-glbstat').textContent=(it&&IMG['glb:'+it.id])?'3Dモデルを使っています。':'';
+  $('f-glboff').classList.toggle('hide',!(it&&IMG['glb:'+it.id]));
 }
 $('f-type').innerHTML=Object.keys(TYPES).map(function(k){return '<option value="'+k+'">'+TYPES[k]+'</option>';}).join('');
 $('f-type').addEventListener('change',function(e){setSize(DEF[e.target.value]);});
@@ -1068,22 +1337,27 @@ $('f-file').addEventListener('change',async function(e){
     if(my===job) note.textContent=E.photo?'AIの読み取りに失敗しました（'+(err&&err.message||'通信エラー')+'）。手で入力してください。':'写真を開けませんでした。';
   }
 });
+$('f-glb').addEventListener('change',function(e){
+  var f=e.target.files&&e.target.files[0]; if(!f) return;
+  if(f.size>12*1024*1024){$('f-glbstat').textContent='ファイルが大きすぎます（12MBまで）。'; e.target.value=''; return;}
+  var fr=new FileReader(); fr.onload=function(){E.glb=String(fr.result).replace(/^data:[^;,]*/,'data:model/gltf-binary'); $('f-glbstat').textContent='3Dモデルを読み込みました（'+(f.size/1048576).toFixed(1)+'MB）。保存すると、下のサイズに収まるように置かれます。';}; fr.readAsDataURL(f);
+});
 $('form').addEventListener('submit',function(e){
   e.preventDefault();
   var name=$('f-name').value.trim(); if(!name) return;
-  var t=$('f-type').value, d=DEF[t], rm=room($('f-room').value), it=E.id&&item(E.id), isNew=!it;
+  var t=$('f-type').value, d=DEF[t], rm=room($('f-room').value), fc=rm&&faceOf(rm), it=item(E.id), isNew=!it;
   var s=[(num($('f-w').value,1,800)||d[0])/100,(num($('f-h').value,1,500)||d[1])/100,(num($('f-d').value,1,800)||d[2])/100];
   if(isNew){
-    var fl=rm?rm.floor:S.floor, n=floorItems(fl).length;
-    it={id:nid('i'),st:'none',rot:0,floor:fl,p:rm?[r2(rm.x+rm.w/2+((n%3)-1)*0.5),r2(rm.z+rm.d/2+((n%2)?0.4:-0.1))]:[r2(((n%4))*0.7),r2(-1)]};
-    S.items.push(it);
-  }else if((it.room||'')!==(rm?rm.id:'')&&rm){it.floor=rm.floor; it.p=[r2(rm.x+rm.w/2),r2(rm.z+rm.d/2)];}
-  it.name=name; it.t=t; it.s=s; it.room=rm?rm.id:null; it.y=(num($('f-y').value,0,400)||0)/100;
+    var fl=rm?rm.floor:S.floor, n=floorItems(fl).length, c0=fc?fc.c:{x:(n%4)*0.7,z:-1};
+    it={id:nid('i'),st:'none',rot:0,floor:fl,p:[r2(c0.x+(fc?((n%3)-1)*0.4:0)),r2(c0.z+(fc?((n%2)?0.3:-0.1):0))]}; S.items.push(it);
+  }else if(fc&&$('f-room').value!==E.room0){it.floor=rm.floor; it.p=[r2(fc.c.x),r2(fc.c.z)];}
+  it.name=name; it.t=t; it.s=s; it.y=(num($('f-y').value,0,400)||0)/100;
   it.maker=$('f-maker').value.trim(); it.model=$('f-model').value.trim(); it.color=$('f-color').value;
   it.bought=$('f-bought').value.trim(); it.warranty=$('f-warranty').value.trim(); it.memo=$('f-memo').value.trim();
   if(E.photo){imgPut(it.id,E.photo); it.pa=E.pa;}
+  if(E.glb) imgPut('glb:'+it.id,E.glb);
   if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;}
-  selI=it.id; selR=null; selO=null; selW=null; openForm(it);
+  setSel('item',it.id); arrangeAll(); openForm(it);
   $('f-stat').textContent=(isNew?'登録しました。':'保存しました。')+'「間取り」で場所と向きを動かせます。';
   refresh();
 });
@@ -1093,15 +1367,15 @@ async function roomFromPhoto(r,file){
   var st=$('rs-'+r.id); if(st) st.textContent='写真を読み取っています…';
   var msg;
   try{
-    var ph=await toJpeg(file,900), wall=avg(ph.canvas,0.2,0.08,0.8,0.45), fl=avg(ph.canvas,0.2,0.82,0.8,0.98), light=null, ai=false, ln='';
+    var ph=await toJpeg(file,900), wl=avg(ph.canvas,0.2,0.08,0.8,0.45), fl=avg(ph.canvas,0.2,0.82,0.8,0.98), light=null, ai=false, ln='';
     if(S.set.key){try{
       var j=await gemini(ROOMPROMPT,ph.url);
-      if(j&&isHex(j.wall_hex)&&isHex(j.floor_hex)){wall=j.wall_hex; fl=j.floor_hex; ai=true;
+      if(j&&isHex(j.wall_hex)&&isHex(j.floor_hex)){wl=j.wall_hex; fl=j.floor_hex; ai=true; if(FLOORK[j.floor_kind]) r.fk=j.floor_kind;
         LIGHTS.forEach(function(l){if(l[0]===j.light) light=l[1];});
         ln=light?'照明は'+j.light+'にしました。':'照明の色は写真から判断できなかったので変えていません。';}
     }catch(_){}}
-    r.wall=wall; r.fl=fl; if(light) r.light=light;
-    msg=ai?('AIの読み取りで壁紙と床を反映しました。'+ln):'写真の上側を壁・下側を床として色を取りました（粗い目安。AI読み取りは設定でAPIキーを入れると使えます）。';
+    r.wall=wl; r.fl=fl; if(light) r.light=light;
+    msg=ai?('AIの読み取りで壁紙・床を反映しました。'+ln):'写真の上側を壁・下側を床として色を取りました（粗い目安。AI読み取りは設定でAPIキーを入れると使えます）。';
   }catch(err){msg='写真を読み取れませんでした。';}
   refresh(); st=$('rs-'+r.id); if(st) st.textContent=msg;
 }
@@ -1140,11 +1414,11 @@ async function syPull(always){
   if(!r.at||!r.data) return false;
   if(r.at===SY.at&&!always){syStat('同期済み'); return true;}
   syStat('読み込み中…');
-  var o=JSON.parse(r.data); if(!o||!o.rooms||!o.items) throw new Error('クラウドのデータを読めません');
+  var o=JSON.parse(r.data); if(!okData(o)) throw new Error('クラウドのデータを読めません');
   var fl=S.floor; S=norm(o); if(S.floors.some(function(f){return f.id===fl;})) S.floor=fl;
-  lastStr=syncStr(); HIST=[]; undoUi(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  arrangeAll(); lastStr=syncStr(); HIST=[]; REDO=[]; undoUi(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
   SY.at=r.at; SY.dirty=false; sySave(); $('conf').classList.add('hide');
-  selI=selR=selO=selW=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); openForm(null); if(view==='2d') fitPlan(); refresh();
+  sel=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); openForm(null); if(view==='2d') fitPlan(); refresh();
   var ks=Object.keys(S.imgv), i, k, g, got=false;
   for(i=0;i<ks.length;i++){k=ks[i]; if(SY.up[k]!==S.imgv[k]||!IMG[k]){g=await gas({action:'imgGet',key:k}); if(g.data){dbPut(k,g.data); SY.up[k]=S.imgv[k]; sySave(); got=true;}}}
   Object.keys(IMG).forEach(function(x){if(!(x in S.imgv)){dbDel(x); delete SY.up[x]; got=true;}});
@@ -1176,83 +1450,114 @@ async function syAction(a){
 }
 document.addEventListener('visibilitychange',function(){if(!document.hidden) syncNow();});
 
+/* ---------- モデルデータの取り込み（形式はこのファイルの先頭に記載） ---------- */
+function importModel(j){
+  if(!j||j.app!=='ie-no-kiroku-model'||!j.floors) throw new Error('format');
+  var nw=0, nr=0, ni=0, no=0;
+  Object.keys(j.floors).forEach(function(f){
+    if(!byId(S.floors,f)) return; var d=j.floors[f]||{};
+    if(j.mode!=='add'){if(d.walls) clearFloor(f); if(d.items) S.items=S.items.filter(function(i){return i.floor!==f;});}
+    (d.walls||[]).forEach(function(w){
+      if(!w||!w.a||!w.b) return; var ax=num(w.a[0],-500,500), az=num(w.a[1],-500,500), bx=num(w.b[0],-500,500), bz=num(w.b[1],-500,500); if(ax==null||az==null||bx==null||bz==null) return;
+      var L=Math.hypot(bx-ax,bz-az); if(L<0.05) return;
+      nw+=addWall(f,ax,az,bx,bz,num(w.h,0.1,6)||WALLH,num(w.t,0.02,0.6)||WALLT).length;
+      (w.ops||[]).forEach(function(p){
+        var pos=num(p.pos,0,L); if(pos==null) return; var kind=OPK[p.kind]?p.kind:'door', m=nearWall(f,ax+(bx-ax)*pos/L,az+(bz-az)*pos/L,0.06); if(!m) return;
+        var q=mkOp(m.w,kind,m.pos,num(p.w,0.2,20)); if(p.hinge==='b') q.hinge='b'; q.out=!!p.out; if(num(p.sill,0,5)!=null) q.sill=num(p.sill,0,5); if(num(p.top,0.1,6)!=null) q.top=num(p.top,0.1,6); no++;
+      });
+    });
+    (d.rooms||[]).forEach(function(r){
+      if(!r||!r.at) return; var x=num(r.at[0],-500,500), z=num(r.at[1],-500,500); if(x==null||z==null) return;
+      S.rooms.push({id:nid('r'),floor:f,name:String(r.name||'部屋').slice(0,30),cx:x,cz:z,fl:isHex(r.floorColor)?r.floorColor:null,fk:FLOORK[r.floor]?r.floor:'plain',wall:isHex(r.wallColor)?r.wallColor:null,light:isHex(r.light)?r.light:null,lux:num(r.lux,0,100)==null?50:num(r.lux,0,100)}); nr++;
+    });
+    (d.items||[]).forEach(function(i){
+      if(!i||!i.at) return; var x=num(i.at[0],-500,500), z=num(i.at[1],-500,500); if(x==null||z==null) return;
+      var t=TYPES[i.t]?i.t:'box', df=DEF[t], sz=i.size||[];
+      S.items.push({id:nid('i'),floor:f,st:'none',name:String(i.name||TYPES[t]).slice(0,40),t:t,p:[x,z],y:num(i.y,0,5)||0,rot:(num(i.rot,-3600,3600)||0)*Math.PI/180,
+        s:[num(sz[0],0.01,8)||df[0]/100,num(sz[1],0.01,5)||df[1]/100,num(sz[2],0.01,8)||df[2]/100],color:isHex(i.color)?i.color:null,maker:String(i.maker||''),model:String(i.model||''),bought:String(i.bought||''),warranty:String(i.warranty||''),memo:String(i.memo||'')}); ni++;
+    });
+    P.fit[f]=false;
+  });
+  sel=null; fitNext=true; if(view==='2d') fitPlan(); refresh();
+  return '取り込みました（壁 '+nw+'・ドアや窓 '+no+'・部屋 '+nr+'・物 '+ni+'）。合わなければ「元に戻す」で戻せます。';
+}
+
 /* ---------- サンプル ---------- */
 function sample(){
-  function R(f,name,x,z,w,d){var r={id:nid('r'),floor:f,name:name,x:x,z:z,w:w,d:d,wall:null,fl:null,light:null,lux:50}; S.rooms.push(r); return r;}
-  function I(r,name,t,x,z,s,o){var it=Object.assign({id:nid('i'),floor:r.floor,room:r.id,name:name,t:t,p:[r.x+x,r.z+z],s:s,rot:0,y:0,st:'none',maker:'サンプル',model:'DEMO-'+S.n,bought:'',warranty:'',memo:'サンプルデータ'},o||{}); S.items.push(it);}
-  var ldk=R('f1','LDK',0,0,5.4,3.6), kt=R('f1','キッチン',5.4,0,2.7,3.6), st=R('f1','階段',0,3.6,2.7,1.8), wc=R('f1','洗面',2.7,3.6,2.7,1.8), en=R('f1','玄関',5.4,3.6,2.7,1.8);
-  var bd=R('f2','寝室',0,0,4.5,3.6), sd=R('f2','書斎',4.5,0,3.6,3.6); R('f2','階段ホール',0,3.6,2.7,1.8);
-  I(ldk,'テレビ','tv',2.7,0.3,[1.25,0.75,0.08]); I(ldk,'ソファ','sofa',2.7,2.8,[1.9,0.7,0.85],{rot:Math.PI}); I(ldk,'ローテーブル','table',2.7,1.6,[1.0,0.35,0.5]);
-  I(kt,'冷蔵庫','fridge',2.2,0.45,[0.65,1.75,0.65]); I(kt,'キッチン','counter',0.4,1.8,[1.8,0.85,0.65],{rot:Q});
-  I(st,'階段','stairs',1.35,0.9,[0.9,2.5,2.4],{rot:Q}); I(wc,'洗濯機','washer',2.2,0.45,[0.6,0.95,0.6]); I(en,'靴箱','shelf',2.35,0.9,[0.9,0.9,0.35],{rot:-Q});
-  I(bd,'ベッド','bed',1.0,1.9,[1.4,0.45,2.0],{rot:Math.PI}); I(sd,'デスク','desk',1.8,3.2,[1.4,0.72,0.6],{rot:Math.PI}); I(sd,'いす','chair',1.8,2.5,[0.5,0.85,0.5]); I(sd,'本棚','shelf',3.35,1.2,[0.9,1.6,0.4],{rot:-Q});
+  function I(f,name,t,x,z,s,o){S.items.push(Object.assign({id:nid('i'),floor:f,name:name,t:t,p:[x,z],s:s,rot:0,y:0,st:'none',maker:'サンプル',model:'DEMO-'+S.n,bought:'',warranty:'',memo:'サンプルデータ'},o||{}));}
+  clearFloor('f1'); clearFloor('f2');
+  rectRoom('f1',0,0,5.4,3.6,{name:'LDK',fk:'wood'}); rectRoom('f1',5.4,0,8.1,3.6,{name:'キッチン',fk:'wood'}); rectRoom('f1',0,3.6,2.7,5.4,{name:'階段'});
+  rectRoom('f1',2.7,3.6,5.4,5.4,{name:'洗面',fk:'tile'}); rectRoom('f1',5.4,3.6,8.1,5.4,{name:'玄関',fk:'tile'});
+  rectRoom('f2',0,0,4.5,3.6,{name:'寝室',fk:'wood'}); rectRoom('f2',4.5,0,8.1,3.6,{name:'和室',fk:'tatami'}); rectRoom('f2',0,3.6,2.7,5.4,{name:'階段ホール'});
+  var o; addOp('f1',5.4,1.8,'gap',2.4,0.1); o=addOp('f1',4.0,3.6,'door',0.8,0.1); addOp('f1',1.3,3.6,'gap',1.6,0.1); addOp('f1',6.7,3.6,'slide',0.9,0.1);
+  addOp('f1',2.7,0,'window',1.8,0.1); addOp('f1',8.1,1.8,'window',1.2,0.1); o=addOp('f1',6.7,5.4,'door',0.9,0.1); if(o) o.out=true;
+  addOp('f2',2.2,0,'window',1.8,0.1); addOp('f2',6.3,0,'window',1.8,0.1); addOp('f2',4.5,2.6,'slide',1.6,0.1); addOp('f2',1.3,3.6,'gap',1.6,0.1);
+  I('f1','テレビ','tv',2.7,0.3,[1.25,0.75,0.08]); I('f1','ソファ','sofa',2.7,2.8,[1.9,0.7,0.85],{rot:Math.PI}); I('f1','ローテーブル','table',2.7,1.6,[1.0,0.35,0.5]);
+  I('f1','冷蔵庫','fridge',7.6,0.45,[0.65,1.75,0.65]); I('f1','キッチン','counter',6.6,0.4,[1.3,0.85,0.65]);
+  I('f1','階段','stairs',1.35,4.5,[0.9,2.4,2.4],{rot:Q}); I('f1','洗濯機','washer',4.95,4.05,[0.6,0.95,0.6]); I('f1','洗面台','basin',3.2,3.95,[0.75,0.85,0.5]); I('f1','靴箱','shelf',7.85,4.5,[0.9,0.9,0.35],{rot:-Q});
+  I('f2','ベッド','bed',1.0,1.9,[1.4,0.45,2.0],{rot:Math.PI}); I('f2','座卓','table',6.3,1.8,[1.2,0.35,0.75]); I('f2','本棚','shelf',0.3,2.9,[0.9,1.6,0.4],{rot:Q});
 }
 
 /* ---------- 操作 ---------- */
 var wipeArmed=0;
 document.addEventListener('click',function(e){
-  var t=e.target.closest('[data-a]'); if(!t||t.tagName==='INPUT') return;
-  var a=t.dataset.a, v=t.dataset.v, it, r;
+  var t=e.target.closest('[data-a]'); if(!t||t.tagName==='INPUT'||t.tagName==='SELECT') return;
+  var a=t.dataset.a, v=t.dataset.v, it, r, w, o;
   if(a==='tab') showTab(v);
   else if(a==='view') setView(v);
-  else if(a==='floor'){S.floor=v; selI=selR=selO=selW=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
+  else if(a==='v3'){S.set.view3=v; refresh();}
+  else if(a==='floor'){S.floor=v; sel=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
   else if(a==='undo') undo();
-  else if(a==='side'){r=room(selR); if(r){r.off=r.off||{}; r.off[v]=!r.off[v]; refresh();}}
-  else if(a==='delwall'){S.walls=S.walls.filter(function(x){return x.id!==selW;}); S.ops=S.ops.filter(function(o){return o.wall!==selW;}); selW=null; refresh();}
-  else if(a==='step'){
-    var dv=(+t.dataset.d)*0.05, k=t.dataset.k, so=op(selO), sr=room(selR);
-    if(k==='op.w'&&so) so.w=r2(Math.max(0.3,Math.min(20,so.w+dv)));
-    else if(k==='op.pos'&&so){var H0=host(so); if(H0){var w0=Math.min(so.w,H0.len); so.pos=r3(Math.max(w0/2,Math.min(H0.len-w0/2,Math.max(w0/2,Math.min(H0.len-w0/2,so.pos))+dv)));}}
-    else if(k==='room.h'&&sr) sr.wh=r2(Math.max(0.1,Math.min(3,(sr.wh||WH)+dv)));
-    else if(k==='wall.h'&&fwall(selW)) fwall(selW).h=r2(Math.max(0.1,Math.min(3,(fwall(selW).h||WH)+dv)));
-    else if(k==='wall.len'&&fwall(selW)) wallLen(fwall(selW),Math.abs(fwall(selW).x2-fwall(selW).x1)+Math.abs(fwall(selW).z2-fwall(selW).z1)+dv);
-    else if(k==='room.w'&&sr) sr.w=r2(Math.max(0.3,sr.w+dv));
-    else if(k==='room.d'&&sr) sr.d=r2(Math.max(0.3,sr.d+dv));
-    refresh();
-  }
-  else if(a==='nudge'){it=item(selI); if(it){it.p=[r2(it.p[0]+(+t.dataset.dx)*0.05),r2(it.p[1]+(+t.dataset.dz)*0.05)]; var nr=roomAt(it.floor,it.p[0],it.p[1]); it.room=nr?nr.id:null; refresh();}}
-  else if(a==='flip'){var fo=op(selO); if(fo){if(v==='hinge') fo.hinge=(fo.hinge==='b'?'a':'b'); else fo.out=!fo.out; refresh();}}
-  else if(a==='mode'){setMode(v); if(v==='door'||v==='slide'||v==='window') $('pstat').textContent=({door:'ドア',slide:'引き戸',window:'窓'})[v]+'を付けたい壁をタップしてください。'; else if(v==='wall') $('pstat').textContent='今ある壁の上から指を置いて、伸ばしたい方向へなぞってください（縦か横にまっすぐ伸びます）。'; else if(v==='gap') $('pstat').textContent='消したい壁の上を、消す範囲だけなぞってください。'; else $('pstat').textContent='';}
-  else if(a==='delop'){S.ops=S.ops.filter(function(o){return o.id!==selO;}); selO=null; selW=null; refresh();}
+  else if(a==='redo') redo();
+  else if(a==='mode') setMode(v);
   else if(a==='fit'){fitPlan(); drawPlan();}
-  else if(a==='addroom'){
-    var rs=floorRooms(), last=rs[rs.length-1];
-    r={id:nid('r'),floor:S.floor,name:'部屋'+(rs.length+1),x:last?r2(last.x+last.w):0,z:last?last.z:0,w:3.6,d:2.7,wall:null,fl:null,light:null,lux:50};
-    S.rooms.push(r); selR=r.id; selI=null; selO=null; selW=null; setMode('select'); fitPlan(); refresh();
-  }
   else if(a==='planauto') planAuto();
   else if(a==='planoff'){imgDel('plan:'+S.floor); refresh();}
   else if(a==='ff'){fFloor=v; renderChips(); renderList();}
-  else if(a==='sel'){selectItem(v);}
-  else if(a==='desel'){selI=selR=selO=selW=null; refresh();}
+  else if(a==='sel') selectItem(v);
+  else if(a==='desel'){sel=null; refresh();}
+  else if(a==='godeco') showTab('deco');
   else if(a==='st'){it=item(t.dataset.id); if(it){it.st=(it.st===v?'none':v); refresh();}}
   else if(a==='invreset'){S.items.forEach(function(i){i.st='none';}); refresh();}
-  else if(a==='rot'){it=item(selI); if(it){it.rot=((it.rot||0)+Q)%(Math.PI*2); refresh();}}
-  else if(a==='edit'){it=item(selI); if(it){openForm(it); showTab('form');}}
+  else if(a==='rot'){it=item(selIs('item')); if(it){it.rot=r3(((it.rot||0)+(+v)*Math.PI/180)%(Math.PI*2)); refresh();}}
+  else if(a==='nudge'){it=item(selIs('item')); if(it){it.p=[r2(it.p[0]+(+t.dataset.dx)*0.05),r2(it.p[1]+(+t.dataset.dz)*0.05)]; refresh();}}
+  else if(a==='edit'){it=item(selIs('item')); if(it){openForm(it); showTab('form');}}
   else if(a==='new'){openForm(null); showTab('form');}
-  else if(a==='delitem'){it=item(E.id); if(it){S.items=S.items.filter(function(i){return i!==it;}); imgDel(it.id); if(selI===it.id) selI=null; selO=null; selW=null; openForm(null); showTab('items'); refresh();}}
-  else if(a==='delroom'){r=room(selR); if(r){S.rooms=S.rooms.filter(function(x){return x!==r;}); S.items.forEach(function(i){if(i.room===r.id)i.room=null;}); S.ops=S.ops.filter(function(o){return o.room!==r.id;}); selR=null; selO=null; selW=null; refresh();}}
-  else if(a==='rescale'){
-    r=room(selR); var real=num($('r-real').value,0.3,50);
-    if(r&&real){var k=real/r.w, f=S.floor;
-      floorRooms(f).forEach(function(x){x.x=r2(x.x*k); x.z=r2(x.z*k); x.w=r2(x.w*k); x.d=r2(x.d*k);});
-      floorItems(f).forEach(function(i){i.p=[r2(i.p[0]*k),r2(i.p[1]*k)];});
-      floorOps(f).forEach(function(o){o.pos=r2(o.pos*k);});
-      floorWalls(f).forEach(function(q){q.x1=r2(q.x1*k); q.x2=r2(q.x2*k); q.z1=r2(q.z1*k); q.z2=r2(q.z2*k);});
-      planCfg().wm=planCfg().wm*k; fitPlan(); fitNext=true; refresh();}
-  }
+  else if(a==='delitem'){it=item(E.id); if(it){S.items=S.items.filter(function(i){return i!==it;}); imgDel(it.id); if(IMG['glb:'+it.id]) imgDel('glb:'+it.id); sel=null; openForm(null); showTab('items'); refresh();}}
+  else if(a==='glboff'){it=item(E.id); if(it){imgDel('glb:'+it.id); E.glb=null; openForm(it); refresh();}}
+  else if(a==='delwall'){delWall(selIs('wall')); sel=null; refresh();}
+  else if(a==='delop'){S.ops=S.ops.filter(function(x){return x.id!==selIs('op');}); sel=null; refresh();}
+  else if(a==='flip'){o=op(selIs('op')); if(o){if(v==='hinge') o.hinge=(o.hinge==='b'?'a':'b'); else o.out=!o.out; refresh();}}
+  else if(a==='step'){stepVal(t.dataset.k,null,(+t.dataset.d)*0.05); refresh();}
+  else if(a==='rescale'){w=wall(selIs('wall')); var real=num($('w-real').value,0.2,100); if(w&&real){rescaleFloor(S.floor,real/wlen(w)); fitNext=true; fitPlan(); refresh();} else $('pstat').textContent='「実際の長さ」に数字を入れてから押してください。';}
   else if(a==='light'){r=room(t.dataset.rid); if(r){r.light=v; refresh();}}
-  else if(a==='decoreset'){r=room(t.dataset.rid); if(r){r.wall=r.fl=r.light=null; r.lux=50; refresh();}}
+  else if(a==='decoreset'){r=room(t.dataset.rid); if(r){r.wall=r.fl=r.light=null; r.lux=50; r.fk='plain'; refresh();}}
   else if(a==='aitest') aiTest();
   else if(a==='sytest'||a==='syup'||a==='sydown'||a==='syuse'||a==='syforce') syAction(a);
   else if(a==='systop'){SY.on=false; sySave(); syUi(); $('conf').classList.add('hide'); $('s-sy').textContent='同期を止めました。データはこの端末とドライブの両方に残っています。'; syStat('保存済み（この端末）');}
   else if(a==='export') exportData();
-  else if(a==='sample'){sample(); fitNext=true; P.fit={}; if(view==='2d') fitPlan(); $('s-etc').textContent='サンプルの家を追加しました。'; refresh();}
+  else if(a==='sample'){sample(); fitNext=true; P.fit={}; if(view==='2d') fitPlan(); $('s-etc').textContent='サンプルの家を入れました（間取りは置き換え、物は追加）。'; refresh();}
   else if(a==='wipe'){
-    if(Date.now()-wipeArmed<5000){Object.keys(IMG).forEach(function(k){dbDel(k);}); var set=S.set; S=fresh(); S.set=set; selI=selR=selO=selW=null; fitNext=true; P.fit={}; wipeArmed=0; t.textContent='全データを消す'; $('s-etc').textContent='すべて消しました。'; openForm(null); refresh();}
+    if(Date.now()-wipeArmed<5000){Object.keys(IMG).forEach(function(k){dbDel(k);}); var set=S.set; S=fresh(); S.set=set; sel=null; fitNext=true; P.fit={}; wipeArmed=0; t.textContent='全データを消す'; $('s-etc').textContent='すべて消しました。'; openForm(null); refresh();}
     else{wipeArmed=Date.now(); t.textContent='もう一度押すと消えます'; setTimeout(function(){if(wipeArmed){wipeArmed=0; t.textContent='全データを消す';}},5000);}
   }
 });
+/* ＋−や数字入力での調整。v が null のときは今の値に d を足す */
+function stepVal(k,v,d){
+  var w=wall(selIs('wall')), o=op(selIs('op')), L, s;
+  function nv(cur,lo,hi){return r2(clamp(v==null?cur+d:v,lo,hi));}
+  if(w){
+    if(k==='wall.h') w.h=nv(w.h||WALLH,0.1,6);
+    else if(k==='wall.t') w.t=nv(w.t||WALLT,0.02,0.6);
+    else if(k==='wall.len'){L=wlen(w); var n=nv(L,0.1,100), nx=r3(w.x1+(w.x2-w.x1)*n/L), nz=r3(w.z1+(w.z2-w.z1)*n/L); moveNode(w.floor,w.x2,w.z2,nx,nz); w.x2=nx; w.z2=nz;}
+  }else if(o){
+    s=opSpan(o); if(!s) return;
+    if(k==='op.w') o.w=nv(o.w,0.2,s.L);
+    else if(k==='op.pos'){var ww=Math.min(o.w,s.L); o.pos=clamp(nv((s.a+s.b)/2,0,s.L),ww/2,s.L-ww/2);}
+    else if(k==='op.sill') o.sill=nv(s.sill,0,Math.max(0,s.top-0.2));
+    else if(k==='op.top') o.top=nv(s.top>50?2.0:s.top,Math.max(0.3,s.sill+0.2),6);
+  }
+}
 document.addEventListener('input',function(e){
   var t=e.target, d=t.dataset;
   if(d.rk){var r=room(d.rid); if(r){r[d.rk]=(t.type==='range'?+t.value:t.value); redraw();}}
@@ -1261,31 +1566,23 @@ document.addEventListener('input',function(e){
 document.addEventListener('change',function(e){
   var t=e.target, d=t.dataset, f, r;
   if(d.roomphoto){f=t.files&&t.files[0]; r=room(d.roomphoto); t.value=''; if(f&&r) roomFromPhoto(r,f);}
-  else if(d.of){var oo=op(selO); if(!oo) return;
-    oo.kind=(t.value==='window'||t.value==='slide'||t.value==='gap')?t.value:'door'; refresh();}
-  else if(d.sf){var sv=num(t.value,0,50), so2=op(selO), sr2=room(selR);
-    if(sv!=null){
-      if(d.sf==='op.w'&&so2) so2.w=Math.max(0.3,sv); else if(d.sf==='op.pos'&&so2) so2.pos=sv;
-      else if(d.sf==='room.h'&&sr2) sr2.wh=Math.max(0.1,Math.min(3,sv));
-      else if(d.sf==='wall.h'&&fwall(selW)) fwall(selW).h=Math.max(0.1,Math.min(3,sv));
-      else if(d.sf==='wall.len'&&fwall(selW)) wallLen(fwall(selW),sv);
-      else if(d.sf==='room.w'&&sr2) sr2.w=Math.max(0.3,sv); else if(d.sf==='room.d'&&sr2) sr2.d=Math.max(0.3,sv);
-    }
-    refresh();}
-  else if(d.rf){r=room(selR); if(!r) return;
-    r.name=t.value.trim()||r.name; refresh();}
+  else if(d.sf){var sv=num(t.value,0,100); if(sv!=null) stepVal(d.sf,sv,0); refresh();}
+  else if(d.of){var oo=op(selIs('op')); if(oo){oo.kind=OPK[t.value]?t.value:'door'; var df=OPDEF[oo.kind]; oo.sill=df.sill; oo.top=df.top; refresh();}}
+  else if(d.rn){r=room(selIs('room')); if(r){r.name=t.value.trim()||r.name; refresh();}}
+  else if(d.rfk){r=room(d.rfk); if(r){r.fk=FLOORK[t.value]?t.value:'plain'; refresh();}}
   else if(t.id==='planautofile'){f=t.files&&t.files[0]; t.value=''; if(f) toJpeg(f,1600).then(function(ph){imgPut('plan:'+S.floor,ph.url); autoArm=Date.now(); fitPlan(); refresh(); planAuto();}).catch(function(){$('pstat').textContent='画像を開けませんでした。';});}
   else if(t.id==='planfile'){f=t.files&&t.files[0]; t.value=''; if(f) toJpeg(f,1600).then(function(ph){imgPut('plan:'+S.floor,ph.url); fitPlan(); refresh();}).catch(function(){});}
-  else if(t.id==='s-theme'){S.set.theme=t.value; applyTheme(); renderDeco(); redraw();}
+  else if(t.id==='s-theme'){S.set.theme=t.value; applyTheme(); refresh();}
   else if(t.id==='s-key'){S.set.key=t.value.trim(); save();}
-  else if(t.id==='s-model'){S.set.model=t.value.trim()||'gemini-3.8-flash'; save();}
+  else if(t.id==='s-model'){S.set.model=t.value.trim()||FALLBACKS[0]; save();}
   else if(t.id==='s-url'){SY.url=t.value.trim(); sySave();}
   else if(t.id==='s-pass'){SY.pass=t.value; sySave();}
   else if(t.id==='s-import'){f=t.files&&t.files[0]; t.value=''; if(f) importData(f);}
+  else if(t.id==='s-mimport'){f=t.files&&t.files[0]; t.value=''; if(f){var fr=new FileReader(); fr.onload=function(){try{$('s-mi').textContent=importModel(JSON.parse(fr.result));}catch(err){$('s-mi').textContent='このファイルは取り込めませんでした。家の記録用のモデルデータ（.json）を選んでください。';}}; fr.readAsText(f);}}
 });
 function applyTheme(){var th=S.set.theme; if(th==='light'||th==='dark') document.documentElement.setAttribute('data-theme',th); else document.documentElement.removeAttribute('data-theme');}
 async function aiTest(){
-  var st=$('s-ai'); S.set.key=$('s-key').value.trim(); S.set.model=$('s-model').value.trim()||'gemini-3.8-flash'; save();
+  var st=$('s-ai'); S.set.key=$('s-key').value.trim(); S.set.model=$('s-model').value.trim()||FALLBACKS[0]; save();
   if(!S.set.key){st.textContent='APIキーが空です。'; return;}
   st.textContent='確かめています…';
   try{
@@ -1299,7 +1596,7 @@ async function aiTest(){
 function exportData(){
   try{
     var c=JSON.parse(JSON.stringify(S)); c.set.key='';
-    var blob=new Blob([JSON.stringify({app:'ie-no-kiroku',v:1,S:c,IMG:IMG})],{type:'application/json'}), a=document.createElement('a'), d=new Date();
+    var blob=new Blob([JSON.stringify({app:'ie-no-kiroku',v:2,S:c,IMG:IMG})],{type:'application/json'}), a=document.createElement('a'), d=new Date();
     a.href=URL.createObjectURL(blob); a.download='ie-no-kiroku-'+d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)+'.json';
     document.body.appendChild(a); a.click(); a.remove(); $('s-bk').textContent='書き出しました。';
   }catch(e){$('s-bk').textContent='書き出せませんでした。';}
@@ -1308,23 +1605,25 @@ function importData(file){
   var fr=new FileReader();
   fr.onload=function(){
     try{
-      var j=JSON.parse(fr.result); if(!j||j.app!=='ie-no-kiroku'||!j.S||!j.S.rooms||!j.S.items) throw new Error('format');
+      var j=JSON.parse(fr.result); if(!j||j.app!=='ie-no-kiroku'||!okData(j.S)) throw new Error('format');
       var key=S.set.key; Object.keys(IMG).forEach(function(k){dbDel(k);}); S=norm(j.S); S.set.key=key; S.imgv={};
       Object.keys(j.IMG||{}).forEach(function(k){imgPut(k,j.IMG[k]);});
-      selI=selR=selO=selW=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); if(view==='2d') fitPlan(); openForm(null); refresh(); $('s-bk').textContent='読み込みました。';
+      sel=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); if(view==='2d') fitPlan(); openForm(null); refresh(); $('s-bk').textContent='読み込みました。';
     }catch(e){$('s-bk').textContent='このファイルは読み込めませんでした。家の記録で書き出したファイルを選んでください。';}
   };
   fr.readAsText(file);
 }
-function syncSettings(){$('s-theme').value=S.set.theme||'auto'; $('s-key').value=S.set.key||''; $('s-model').value=S.set.model||'gemini-3.8-flash';}
+function syncSettings(){$('s-theme').value=S.set.theme||'auto'; $('s-key').value=S.set.key||''; $('s-model').value=S.set.model||FALLBACKS[0];}
 
 /* ---------- 起動 ---------- */
 applyTheme(); syncSettings(); syUi(); syStat(SY.on?'同期の確認中…':'保存済み（この端末）');
+arrangeAll(); lastStr=syncStr();
 try{init3D();}catch(err){T=null; $('no3d').style.display='flex';}
-initPlan(); openForm(null);
+initPlan(); openForm(null); undoUi();
 new MutationObserver(function(){redraw();}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-refresh();
+setView('3d');
 dbOpen().then(function(){refresh(); syncNow();});
+
 })();
 </script>
 </body>
