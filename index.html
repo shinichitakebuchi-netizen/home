@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v2.0.1
+/* 家の記録 v2.0.2
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -173,6 +173,15 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
   .tbar>*{flex:none}
 }
 .rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
+.pad{position:absolute;right:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,46px);grid-auto-rows:46px;gap:4px;touch-action:none;user-select:none;-webkit-user-select:none}
+.pad button{border:1px solid var(--line);background:var(--surface);border-radius:8px;font-size:18px;opacity:.9;touch-action:none}
+.deco .lux2{grid-column:2/-1}
+@media (max-width:819px){
+  body.ed main{grid-template-rows:minmax(300px,64%) minmax(0,1fr)}
+  .tbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .tbar>*{flex:none}
+}
+.rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -219,6 +228,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
     <div class="pstat hide" id="pstat" role="status"></div>
     <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
     <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
+    <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
     <div class="card" id="rcard"></div>
     <div class="card" id="detail"></div>
   </section>
@@ -248,6 +258,11 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <div class="pickrow">
           <label class="filebtn"><input type="file" accept="image/*" id="f-file"><span class="btn pri">写真を選ぶ</span></label>
           <span class="rs">写真から種類・サイズ・色を読み取ります</span>
+        </div>
+        <div class="pickrow">
+          <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
+          <button class="btn sm hide" type="button" id="f-glboff" data-a="glboff">3Dモデルを外す</button>
+          <span class="rs" id="f-glbstat" role="status"></span>
         </div>
         <div class="pickrow">
           <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
@@ -339,13 +354,20 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <span class="rs" id="s-mi" role="status"></span>
         </div>
 
+        <h3>モデルデータの取り込み</h3>
+        <p class="lead">Claudeのチャットで間取り図や写真から作ってもらったモデルデータ（.json）を取り込みます。ファイルに入っている階の間取りが置き換わります。合わなければ「戻す」で戻せます。</p>
+        <div class="pickrow">
+          <label class="filebtn"><input type="file" accept="application/json,.json" id="s-mimport"><span class="btn">モデルデータを取り込む</span></label>
+          <span class="rs" id="s-mi" role="status"></span>
+        </div>
+
         <h3>その他</h3>
         <div class="pickrow">
           <button class="btn" data-a="sample">サンプルの家を入れる</button>
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v2.0.1</p>
+        <p class="lead sec">家の記録 v2.0.2</p>
       </div>
     </div>
   </section>
@@ -370,9 +392,9 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
      }, "f2":{...} } }
    ===================================================================== */
 var KEY='ie-no-kiroku-v1', WALLH=2.4, WALLT=0.1, CUT=1.2, Q=Math.PI/2, EPS=0.02;
-var TYPES={box:'その他（箱）',fridge:'冷蔵庫',tv:'テレビ・モニター',sofa:'ソファ',bed:'ベッド',table:'テーブル',desk:'デスク',chair:'いす',shelf:'棚',washer:'洗濯機',aircon:'エアコン',microwave:'電子レンジ',counter:'キッチン・カウンター',stairs:'階段',toilet:'トイレ',bath:'浴槽',basin:'洗面台'};
-var DEF={box:[40,50,40],fridge:[60,170,65],tv:[110,65,6],sofa:[180,70,85],bed:[100,45,200],table:[100,70,60],desk:[120,72,60],chair:[45,85,45],shelf:[80,150,35],washer:[60,95,60],aircon:[80,28,25],microwave:[48,30,38],counter:[180,85,65],stairs:[90,250,240],toilet:[40,80,70],bath:[75,55,120],basin:[75,85,50]};
-var TOPPHOTO={table:1,desk:1,bed:1,counter:1};
+var TYPES={box:'その他（箱）',fridge:'冷蔵庫',tv:'テレビ・モニター',sofa:'ソファ',bed:'ベッド',table:'テーブル',desk:'デスク',chair:'いす',shelf:'棚',washer:'洗濯機',aircon:'エアコン',microwave:'電子レンジ',counter:'キッチン・カウンター',stairs:'階段',toilet:'トイレ',bath:'浴槽',basin:'洗面台',tvstand:'テレビスタンド',tvpanel:'テレビ（スタンド・壁掛け用）',rug:'ラグ・マット'};
+var DEF={box:[40,50,40],fridge:[60,170,65],tv:[110,65,6],sofa:[180,70,85],bed:[100,45,200],table:[100,70,60],desk:[120,72,60],chair:[45,85,45],shelf:[80,150,35],washer:[60,95,60],aircon:[80,28,25],microwave:[48,30,38],counter:[180,85,65],stairs:[90,250,240],toilet:[40,80,70],bath:[75,55,120],basin:[75,85,50],tvstand:[45,155,55],tvpanel:[73,44,8],rug:[133,2,195]};
+var TOPPHOTO={table:1,desk:1,bed:1,counter:1,rug:1};
 var ST={ok:'確認済み',none:'未確認',missing:'見つからない'}, STMARK={ok:'✓ ',none:'',missing:'! '};
 var LIGHTS=[['電球色','#FFC98A'],['温白色','#FFE2C0'],['昼白色','#FFF6EC'],['昼光色','#EAF2FF']];
 var FLOORK={plain:'無地',wood:'フローリング',tatami:'畳',tile:'タイル'};
@@ -640,6 +662,9 @@ function parts(t,w,h,d){
     case 'toilet': return [[0,h*0.22,d*0.12,w*0.9,h*0.44,d*0.7],[0,h*0.5,-d*0.38,w,h,d*0.24],[0,h*0.47,d*0.12,w*0.95,0.04,d*0.72]];
     case 'bath': return [[0,h*0.1,0,w,h*0.2,d],[-w/2+0.04,h/2,0,0.08,h,d],[w/2-0.04,h/2,0,0.08,h,d],[0,h/2,-d/2+0.04,w,h,0.08],[0,h/2,d/2-0.04,w,h,0.08]];
     case 'basin': return [[0,h*0.45,0,w,h*0.9,d],[0,h*0.95,0,w*0.7,h*0.1,d*0.7],[0,h+0.4,-d/2+0.02,w*0.9,0.7,0.03]];
+    case 'tvstand': return [[0,0.01,0,w,0.02,d],[0,h/2,-d*0.3,0.07,h,0.05],[0,h*0.4,-d*0.08,w*0.8,0.012,d*0.55],[-w*0.3,h-0.22,-d*0.3+0.035,0.035,0.44,0.012],[w*0.3,h-0.22,-d*0.3+0.035,0.035,0.44,0.012]];
+    case 'tvpanel': return [[0,h/2,0,w,h,Math.min(d,0.1)]];
+    case 'rug': return [[0,h/2,0,w,Math.max(h,0.01),d]];
     default: return [[0,h/2,0,w,h,d]];
   }
 }
