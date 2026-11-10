@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v1.4.1
+/* 家の記録 v1.5.0
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -121,6 +121,9 @@ ul.rows{list-style:none;margin:0;padding:0}
 .stp input{min-width:0;text-align:center;padding:5px 2px}
 .stp button{flex:none;width:30px;border:1px solid var(--line);background:var(--surface);border-radius:6px;font-size:16px;line-height:1;padding:0}
 .rgrid .full{grid-column:1/-1}
+.stp button.sd{flex:1;width:auto;font-size:12px;padding:5px 0}
+.stp button.sd[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.card{max-height:calc(100% - 20px);overflow-y:auto}
 .btn.danger{color:var(--warn);border-color:var(--warn)}
 .btn[aria-pressed="true"]{border-color:var(--ink);font-weight:600;background:var(--ink);color:var(--bg)}
 
@@ -185,6 +188,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <button class="btn sm" data-a="mode" data-v="select" aria-pressed="true">選ぶ・動かす</button>
         <button class="btn sm" data-a="mode" data-v="draw" aria-pressed="false">部屋を描く</button>
         <button class="btn sm" data-a="addroom">＋部屋</button>
+        <button class="btn sm" data-a="mode" data-v="wall" aria-pressed="false">＋壁</button>
         <button class="btn sm" data-a="mode" data-v="door" aria-pressed="false">＋ドア</button>
         <button class="btn sm" data-a="mode" data-v="slide" aria-pressed="false">＋引き戸</button>
         <button class="btn sm" data-a="mode" data-v="window" aria-pressed="false">＋窓</button>
@@ -298,7 +302,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v1.4.1</p>
+        <p class="lead sec">家の記録 v1.5.0</p>
       </div>
     </div>
   </section>
@@ -324,9 +328,9 @@ function snap(v){return Math.round(v*20)/20;}
 function r2(v){return Math.round(v*100)/100;}
 
 /* ---------- データ ---------- */
-function fresh(){return {v:1,n:1,floor:'f1',floors:[{id:'f1',name:'1階'},{id:'f2',name:'2階'}],rooms:[],items:[],plans:{},imgv:{},ops:[],set:{key:'',model:'gemini-3.8-flash',theme:'auto'}};}
+function fresh(){return {v:1,n:1,floor:'f1',floors:[{id:'f1',name:'1階'},{id:'f2',name:'2階'}],rooms:[],items:[],plans:{},imgv:{},ops:[],walls:[],set:{key:'',model:'gemini-3.8-flash',theme:'auto'}};}
 var S=fresh();
-function norm(o){var b=fresh(); o.set=Object.assign(b.set,o.set||{}); o.plans=o.plans||{}; o.imgv=o.imgv||{}; o.ops=o.ops||[]; o.floors=(o.floors&&o.floors.length)?o.floors:b.floors; o.n=o.n||1; if(!o.floors.some(function(f){return f.id===o.floor;})) o.floor=o.floors[0].id; return o;}
+function norm(o){var b=fresh(); o.set=Object.assign(b.set,o.set||{}); o.plans=o.plans||{}; o.imgv=o.imgv||{}; o.ops=o.ops||[]; o.walls=o.walls||[]; o.floors=(o.floors&&o.floors.length)?o.floors:b.floors; o.n=o.n||1; if(!o.floors.some(function(f){return f.id===o.floor;})) o.floor=o.floors[0].id; return o;}
 try{var raw=localStorage.getItem(KEY); if(raw){var o=JSON.parse(raw); if(o&&o.v===1&&o.rooms&&o.items) S=norm(o);}}catch(e){}
 /* 同期で比べる中身（今どの階を見ているかは端末ごとなので含めない） */
 function syncStr(){var f=S.floor; S.floor=''; var t=JSON.stringify(S); S.floor=f; return t;}
@@ -348,7 +352,7 @@ function undo(){
   Object.keys(S.imgv).forEach(function(k){if(!IMG[k]) delete S.imgv[k];});
   lastStr=syncStr(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
   markDirty(); undoUi();
-  if(selI&&!item(selI)) selI=null; if(selR&&!room(selR)) selR=null; if(selO&&!op(selO)) selO=null;
+  if(selI&&!item(selI)) selI=null; if(selR&&!room(selR)) selR=null; if(selO&&!op(selO)) selO=null; if(selW&&!fwall(selW)) selW=null; selW=null;
   applyTheme(); syncSettings(); refresh();
 }
 function nid(p){return p+(S.n++);}
@@ -366,6 +370,15 @@ function opSeg(o){
   var h=(o.side==='n'||o.side==='s'), len=h?r.w:r.d, w=Math.min(o.w,len), pos=Math.max(w/2,Math.min(len-w/2,o.pos)), st=h?r.x:r.z;
   return {h:h,c:o.side==='n'?r.z:(o.side==='s'?r.z+r.d:(o.side==='w'?r.x:r.x+r.w)),a:st+pos-w/2,b:st+pos+w/2,kind:o.kind,side:o.side,id:o.id};
 }
+/* 自分で足した壁（間仕切り）と、部屋の壁を外した辺 */
+function fwall(id){for(var i=0;i<S.walls.length;i++)if(S.walls[i].id===id)return S.walls[i];return null;}
+function floorWalls(f){f=f||S.floor;return S.walls.filter(function(w){return w.floor===f;});}
+function offSegs(f){
+  var a=[]; floorRooms(f).forEach(function(r){var o=r.off||{};
+    if(o.n) a.push({h:true,c:r.z,a:r.x,b:r.x+r.w,kind:'gap'}); if(o.s) a.push({h:true,c:r.z+r.d,a:r.x,b:r.x+r.w,kind:'gap'});
+    if(o.w) a.push({h:false,c:r.x,a:r.z,b:r.z+r.d,kind:'gap'}); if(o.e) a.push({h:false,c:r.x+r.w,a:r.z,b:r.z+r.d,kind:'gap'});});
+  return a;
+}
 function nearWall(f,x,z,maxd){
   var best=null;
   floorRooms(f).forEach(function(r){
@@ -376,6 +389,7 @@ function nearWall(f,x,z,maxd){
   });
   return best;
 }
+function wallLen(fw,len){len=r2(Math.max(0.3,Math.min(50,len))); if(Math.abs(fw.z2-fw.z1)<0.001) fw.x2=r2(fw.x1+len); else fw.z2=r2(fw.z1+len);}
 function addOp(f,x,z,kind,w,maxd){
   var n=nearWall(f,x,z,maxd); if(!n) return null;
   w=Math.max(0.4,Math.min(w,n.len));
@@ -396,7 +410,7 @@ function dbDel(k){delete IMG[k]; if(DB)try{DB.transaction('img','readwrite').obj
 function imgPut(k,v){dbPut(k,v); S.imgv[k]=Date.now();}
 function imgDel(k){dbDel(k); delete S.imgv[k];}
 
-var view='3d', selI=null, selR=null, selO=null, fFloor='all', query='', fitNext=true;
+var view='3d', selI=null, selR=null, selO=null, selW=null, fFloor='all', query='', fitNext=true;
 
 /* ---------- 3D ---------- */
 var T=null;
@@ -435,18 +449,18 @@ function init3D(){
   var mEdge=new THREE.LineBasicMaterial({transparent:true,opacity:0.7});
   var marker=new THREE.Mesh(new THREE.OctahedronGeometry(0.13),new THREE.MeshBasicMaterial()); marker.visible=false; scene.add(marker);
   var pickable=[], mats={}, rmats=[], labels=[], TX={}, TW=0.06;
-  var mGlass=new THREE.MeshLambertMaterial({transparent:true,opacity:0.4}), mDoor=new THREE.MeshLambertMaterial();
-  function wallRun(h,line,ctr,a,b,mat,segs){
+  var mGlass=new THREE.MeshLambertMaterial({transparent:true,opacity:0.4}), mDoor=new THREE.MeshLambertMaterial(), mFree=new THREE.MeshLambertMaterial();
+  function wallRun(h,line,ctr,a,b,mat,segs,hh){
     if(b-a<0.01) return;
     var cuts=segs.filter(function(q){return q.h===h&&Math.abs(q.c-line)<0.12&&q.b>a+0.01&&q.a<b-0.01;})
       .map(function(q){return {a:Math.max(a,q.a),b:Math.min(b,q.b),k:q.kind};}).sort(function(p,q){return p.a-q.a;}), cur=a;
     function piece(p,q,hh,y,m,th){if(q-p<0.01) return; if(h) box(q-p,hh,th,m,(p+q)/2,y,ctr); else box(th,hh,q-p,m,ctr,y,(p+q)/2);}
     cuts.forEach(function(c){
-      if(c.b<=cur) return; var s0=Math.max(c.a,cur); piece(cur,s0,WH,WH/2,mat,TW);
-      if(c.k==='window'){piece(s0,c.b,0.45,0.225,mat,TW); piece(s0,c.b,WH-0.45,0.45+(WH-0.45)/2,mGlass,0.02);}
+      if(c.b<=cur) return; var s0=Math.max(c.a,cur), sill=Math.min(0.45,hh*0.4); piece(cur,s0,hh,hh/2,mat,TW);
+      if(c.k==='window'){piece(s0,c.b,sill,sill/2,mat,TW); piece(s0,c.b,hh-sill,sill+(hh-sill)/2,mGlass,0.02);}
       cur=c.b;
     });
-    piece(cur,b,WH,WH/2,mat,TW);
+    piece(cur,b,hh,hh/2,mat,TW);
   }
   var orb={theta:-0.55,phi:0.92,r:13}, target=new THREE.Vector3();
 
@@ -483,22 +497,27 @@ function init3D(){
   function rebuild(){
     while(root.children.length){var c=root.children[0]; root.remove(c); c.traverse(function(o){if(o.geometry)o.geometry.dispose();});}
     pickable=[]; mats={}; rmats=[]; labels=[];
-    var x0=1e9,z0=1e9,x1=-1e9,z1=-1e9, t=TW, segs=floorOps().map(opSeg).filter(Boolean);
+    var x0=1e9,z0=1e9,x1=-1e9,z1=-1e9, t=TW, segs=floorOps().map(opSeg).filter(Boolean).concat(offSegs());
     floorRooms().forEach(function(r,i){
-      var fm=new THREE.MeshLambertMaterial(), wm=new THREE.MeshLambertMaterial(), cx=r.x+r.w/2, cz=r.z+r.d/2;
+      var fm=new THREE.MeshLambertMaterial(), wm=new THREE.MeshLambertMaterial(), cx=r.x+r.w/2, cz=r.z+r.d/2, rh=r.wh||WH;
       var slab=new THREE.Mesh(new THREE.BoxGeometry(r.w,0.06,r.d),fm); slab.position.set(cx,-0.03,cz); root.add(slab);
-      wallRun(true,r.z,r.z+t/2,r.x,r.x+r.w,wm,segs); wallRun(true,r.z+r.d,r.z+r.d-t/2,r.x,r.x+r.w,wm,segs);
-      wallRun(false,r.x,r.x+t/2,r.z+t,r.z+r.d-t,wm,segs); wallRun(false,r.x+r.w,r.x+r.w-t/2,r.z+t,r.z+r.d-t,wm,segs);
+      wallRun(true,r.z,r.z+t/2,r.x,r.x+r.w,wm,segs,rh); wallRun(true,r.z+r.d,r.z+r.d-t/2,r.x,r.x+r.w,wm,segs,rh);
+      wallRun(false,r.x,r.x+t/2,r.z+t,r.z+r.d-t,wm,segs,rh); wallRun(false,r.x+r.w,r.x+r.w-t/2,r.z+t,r.z+r.d-t,wm,segs,rh);
       var lp=new THREE.PointLight(0xffffff,0.22,Math.max(r.w,r.d)*1.7,1.2); lp.position.set(cx,2.3,cz); root.add(lp);
-      var sp=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false,transparent:true})); sp.position.set(cx,1.7,cz); sp.renderOrder=5; root.add(sp);
+      var sp=new THREE.Sprite(new THREE.SpriteMaterial({depthTest:false,transparent:true})); sp.position.set(cx,rh+0.5,cz); sp.renderOrder=5; root.add(sp);
       labels.push({sp:sp,text:r.name}); rmats.push({r:r,i:i,fm:fm,wm:wm,lp:lp});
       x0=Math.min(x0,r.x); z0=Math.min(z0,r.z); x1=Math.max(x1,r.x+r.w); z1=Math.max(z1,r.z+r.d);
     });
     floorOps().forEach(function(o){
       var g=opSeg(o); if(!g||o.kind==='window') return;
-      var dir=(o.side==='n'||o.side==='w')?1:-1, w=g.b-g.a, hb=o.hinge==='b';
-      if(o.kind==='slide'){var m0=hb?g.b-w/4:g.a+w/4; if(g.h) box(w/2,WH,0.03,mDoor,m0,WH/2,g.c+dir*0.03); else box(0.03,WH,w/2,mDoor,g.c+dir*0.03,WH/2,m0);}
-      else{var sw=o.out?-dir:dir, hp=hb?g.b:g.a; if(g.h) box(0.04,WH,w,mDoor,hp,WH/2,g.c+sw*w/2); else box(w,WH,0.04,mDoor,g.c+sw*w/2,WH/2,hp);}
+      var dir=(o.side==='n'||o.side==='w')?1:-1, w=g.b-g.a, hb=o.hinge==='b', dh=(room(o.room).wh||WH);
+      if(o.kind==='slide'){var m0=hb?g.b-w/4:g.a+w/4; if(g.h) box(w/2,dh,0.03,mDoor,m0,dh/2,g.c+dir*0.03); else box(0.03,dh,w/2,mDoor,g.c+dir*0.03,dh/2,m0);}
+      else{var sw=o.out?-dir:dir, hp=hb?g.b:g.a; if(g.h) box(0.04,dh,w,mDoor,hp,dh/2,g.c+sw*w/2); else box(w,dh,0.04,mDoor,g.c+sw*w/2,dh/2,hp);}
+    });
+    floorWalls().forEach(function(fw){
+      var hz=Math.abs(fw.z2-fw.z1)<0.001, len=hz?Math.abs(fw.x2-fw.x1):Math.abs(fw.z2-fw.z1), fh=fw.h||WH; if(len<0.01) return;
+      if(hz) box(len,fh,0.08,mFree,(fw.x1+fw.x2)/2,fh/2,fw.z1); else box(0.08,fh,len,mFree,fw.x1,fh/2,(fw.z1+fw.z2)/2);
+      x0=Math.min(x0,fw.x1,fw.x2); z0=Math.min(z0,fw.z1,fw.z2); x1=Math.max(x1,fw.x1,fw.x2); z1=Math.max(z1,fw.z1,fw.z2);
     });
     floorItems().forEach(function(it){addItem(it); x0=Math.min(x0,it.p[0]); z0=Math.min(z0,it.p[1]); x1=Math.max(x1,it.p[0]); z1=Math.max(z1,it.p[1]);});
     if(x1<x0){x0=z0=0;x1=z1=4;}
@@ -516,7 +535,7 @@ function init3D(){
   function paint(){
     renderer.setClearColor(new THREE.Color(css('--bg')),1);
     var ac=css('--accent'), ic=css('--item'), muted=css('--muted');
-    mEdge.color.set(css('--edge')); mGlass.color.set(css('--blue')); mDoor.color.set(css('--item')); marker.material.color.set(ac); marker.visible=false;
+    mEdge.color.set(css('--edge')); mGlass.color.set(css('--blue')); mDoor.color.set(css('--item')); mFree.color.set(css('--wall')); marker.material.color.set(ac); marker.visible=false;
     rmats.forEach(function(m){
       m.fm.color.set(m.r.fl||css(m.i%2?'--floor2':'--floor')); m.wm.color.set(m.r.wall||css('--wall'));
       m.lp.color.set(m.r.light||'#ffffff'); m.lp.intensity=0.44*(m.r.lux==null?50:m.r.lux)/100;
@@ -563,7 +582,7 @@ function init3D(){
   function pick(e){
     var b=canvas.getBoundingClientRect(), v=new THREE.Vector2((e.clientX-b.left)/b.width*2-1,-((e.clientY-b.top)/b.height)*2+1);
     ray.setFromCamera(v,camera); var hit=ray.intersectObjects(pickable,false);
-    selI=hit.length?hit[0].object.userData.id:null; selR=null; selO=null; refresh();
+    selI=hit.length?hit[0].object.userData.id:null; selR=null; selO=null; selW=null; refresh();
   }
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){redraw();});
   T={rebuild:rebuild,resize:resize};
@@ -607,6 +626,14 @@ function drawPlan(){
     x.fillStyle=muted; x.font='11px '+css('--body'); x.fillText(r2(r.w)+'×'+r2(r.d)+'m',sx+6,sy+22,Math.max(10,w-10)); x.font='600 13px '+css('--body');
     if(on){x.fillStyle=ac; x.fillRect(sx+w-8,sy+h-8,16,16);}
   });
+  offSegs().forEach(function(g){
+    var ax=P.ox+(g.h?g.a:g.c)*P.s, ay=P.oy+(g.h?g.c:g.a)*P.s, bx=P.ox+(g.h?g.b:g.c)*P.s, by=P.oy+(g.h?g.c:g.b)*P.s;
+    x.strokeStyle=css('--bg'); x.lineWidth=6; x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke();
+    x.strokeStyle=muted; x.lineWidth=1; x.setLineDash([3,5]); x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke(); x.setLineDash([]);
+  });
+  floorWalls().forEach(function(fw){
+    x.strokeStyle=fw.id===selW?ac:ink; x.lineWidth=5; x.beginPath(); x.moveTo(P.ox+fw.x1*P.s,P.oy+fw.z1*P.s); x.lineTo(P.ox+fw.x2*P.s,P.oy+fw.z2*P.s); x.stroke();
+  });
   floorOps().forEach(function(o){
     var g=opSeg(o); if(!g) return;
     var on=o.id===selO, ax=P.ox+(g.h?g.a:g.c)*P.s, ay=P.oy+(g.h?g.c:g.a)*P.s, bx=P.ox+(g.h?g.b:g.c)*P.s, by=P.oy+(g.h?g.c:g.b)*P.s;
@@ -636,6 +663,7 @@ function drawPlan(){
     var k=((Math.round((it.rot||0)/Q)%4)+4)%4, cx=P.ox+it.p[0]*P.s, cy=P.oy+it.p[1]*P.s, dx=[0,1,0,-1][k], dy=[1,0,-1,0][k];
     x.beginPath(); x.moveTo(cx,cy); x.lineTo(cx+dx*f[0]*P.s/2,cy+dy*f[1]*P.s/2); x.stroke();
   });
+  if(G&&G.k==='wall'){x.strokeStyle=ac; x.lineWidth=5; x.beginPath(); x.moveTo(P.ox+G.x0*P.s,P.oy+G.z0*P.s); x.lineTo(P.ox+G.x1*P.s,P.oy+G.z1*P.s); x.stroke();}
   if(G&&G.k==='draw'){x.setLineDash([5,4]); x.strokeStyle=ac; x.lineWidth=2;
     x.strokeRect(P.ox+Math.min(G.x0,G.x1)*P.s,P.oy+Math.min(G.z0,G.z1)*P.s,Math.abs(G.x1-G.x0)*P.s,Math.abs(G.z1-G.z0)*P.s); x.setLineDash([]);}
 }
@@ -651,21 +679,26 @@ function initPlan(){
     if(PP.size===2){var t=two(); G={k:'pinch',d0:t.d,s0:P.s,wx:(t.cx-P.ox)/P.s,wz:(t.cy-P.oy)/P.s}; return;}
     var w=world(e);
     if(P.mode==='draw'){G={k:'draw',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
+    if(P.mode==='wall'){G={k:'wall',x0:snap(w.x),z0:snap(w.z),x1:snap(w.x),z1:snap(w.z)}; return;}
     if(P.mode==='door'||P.mode==='slide'||P.mode==='window'){
       var no=addOp(S.floor,w.x,w.z,P.mode,P.mode==='window'?1.2:0.8,Math.max(0.5,28/P.s));
-      if(no){selO=no.id; selI=selR=null; setMode('select'); G={k:'op',o:no}; $('pstat').textContent=''; refresh();}
+      if(no){selO=no.id; selI=selR=selW=null; setMode('select'); G={k:'op',o:no}; $('pstat').textContent=''; refresh();}
       else{$('pstat').textContent='壁の近くをタップしてください。'; G={k:'none'};}
       return;
     }
     var ho=null, hd=14/P.s; floorOps().forEach(function(o){var g=opSeg(o); if(!g) return; var al=g.h?w.x:w.z, pr=g.h?w.z:w.x, cl=Math.max(g.a,Math.min(g.b,al)), d=Math.hypot(al-cl,pr-g.c); if(d<hd){hd=d; ho=o;}});
-    if(ho){selO=ho.id; selI=selR=null; G={k:'op',o:ho}; refresh(); return;}
+    var hw=null, wd=14/P.s; floorWalls().forEach(function(fw){
+      var lx=fw.x2-fw.x1, lz=fw.z2-fw.z1, l2=lx*lx+lz*lz||1, tt=Math.max(0,Math.min(1,((w.x-fw.x1)*lx+(w.z-fw.z1)*lz)/l2)), d=Math.hypot(w.x-(fw.x1+tt*lx),w.z-(fw.z1+tt*lz));
+      if(d<wd){wd=d; hw=fw;}});
+    if(hw&&!ho){selW=hw.id; selI=selR=null; selO=null; G={k:'fwall',w:hw,px:w.x,pz:w.z}; refresh(); return;}
+    if(ho){selO=ho.id; selI=selR=selW=null; G={k:'op',o:ho}; refresh(); return;}
     var r=selR&&room(selR);
     if(r&&r.floor===S.floor&&Math.hypot(w.sx-(P.ox+(r.x+r.w)*P.s),w.sy-(P.oy+(r.z+r.d)*P.s))<20){G={k:'resize',r:r}; return;}
     var it=hitItem(w);
-    if(it){selI=it.id; selR=null; selO=null; G={k:'item',it:it,dx:w.x-it.p[0],dz:w.z-it.p[1]}; refresh(); return;}
+    if(it){selI=it.id; selR=null; selO=null; selW=null; G={k:'item',it:it,dx:w.x-it.p[0],dz:w.z-it.p[1]}; refresh(); return;}
     var rr=roomAt(S.floor,w.x,w.z);
-    if(rr){selR=rr.id; selI=null; selO=null; G={k:'room',r:rr,dx:w.x-rr.x,dz:w.z-rr.z}; refresh(); return;}
-    if(selI||selR||selO){selI=selR=selO=null; refresh();}
+    if(rr){selR=rr.id; selI=null; selO=null; selW=null; G={k:'room',r:rr,dx:w.x-rr.x,dz:w.z-rr.z}; refresh(); return;}
+    if(selI||selR||selO||selW){selI=selR=selO=selW=null; refresh();}
     G={k:'pan',x:w.sx,y:w.sy};
   });
   c.addEventListener('pointermove',function(e){
@@ -675,6 +708,8 @@ function initPlan(){
     if(G.k==='pinch'){if(PP.size<2) return; var t=two(); P.s=Math.max(8,Math.min(300,G.s0*t.d/G.d0)); P.ox=t.cx-G.wx*P.s; P.oy=t.cy-G.wz*P.s;}
     else if(G.k==='draw'){G.x1=snap(w.x); G.z1=snap(w.z);}
     else if(G.k==='resize'){G.r.w=Math.max(0.5,snap(w.x-G.r.x)); G.r.d=Math.max(0.5,snap(w.z-G.r.z)); G.ch=true; if($('r-w')){$('r-w').value=r2(G.r.w); $('r-d').value=r2(G.r.d);}}
+    else if(G.k==='wall'){var wx=snap(w.x), wz=snap(w.z); if(Math.abs(wx-G.x0)>=Math.abs(wz-G.z0)){G.x1=wx; G.z1=G.z0;} else {G.x1=G.x0; G.z1=wz;}}
+    else if(G.k==='fwall'){var fdx=snap(w.x-G.px), fdz=snap(w.z-G.pz); if(fdx||fdz){G.w.x1=r2(G.w.x1+fdx); G.w.x2=r2(G.w.x2+fdx); G.w.z1=r2(G.w.z1+fdz); G.w.z2=r2(G.w.z2+fdz); G.px+=fdx; G.pz+=fdz; G.ch=true;}}
     else if(G.k==='op'){var orr=room(G.o.room); if(orr){var hz=(G.o.side==='n'||G.o.side==='s'), ln=hz?orr.w:orr.d, ww=Math.min(G.o.w,ln); G.o.pos=Math.max(ww/2,Math.min(ln-ww/2,snap((hz?w.x-orr.x:w.z-orr.z)))); G.ch=true;}}
     else if(G.k==='item'){G.it.p=[snap(w.x-G.dx),snap(w.z-G.dz)]; G.ch=true;}
     else if(G.k==='room'){var nx=snap(w.x-G.dx), nz=snap(w.z-G.dz), ddx=nx-G.r.x, ddz=nz-G.r.z;
@@ -688,7 +723,11 @@ function initPlan(){
     G=null;
     if(g.k==='draw'){
       var x=Math.min(g.x0,g.x1), z=Math.min(g.z0,g.z1), w=Math.abs(g.x1-g.x0), d=Math.abs(g.z1-g.z0);
-      if(w>=0.4&&d>=0.4){var r={id:nid('r'),floor:S.floor,name:'部屋'+(floorRooms().length+1),x:x,z:z,w:w,d:d,wall:null,fl:null,light:null,lux:50}; S.rooms.push(r); selR=r.id; selI=null; selO=null; setMode('select');}
+      if(w>=0.4&&d>=0.4){var r={id:nid('r'),floor:S.floor,name:'部屋'+(floorRooms().length+1),x:x,z:z,w:w,d:d,wall:null,fl:null,light:null,lux:50}; S.rooms.push(r); selR=r.id; selI=null; selO=null; selW=null; setMode('select');}
+      refresh(); return;
+    }
+    if(g.k==='wall'){
+      if(Math.hypot(g.x1-g.x0,g.z1-g.z0)>=0.3){var nw={id:nid('w'),floor:S.floor,x1:Math.min(g.x0,g.x1),z1:Math.min(g.z0,g.z1),x2:Math.max(g.x0,g.x1),z2:Math.max(g.z0,g.z1),h:WH}; S.walls.push(nw); selW=nw.id; selI=selR=null; selO=null; setMode('select'); $('pstat').textContent='';}
       refresh(); return;
     }
     if(g.k==='item'&&g.ch){var rr=roomAt(S.floor,g.it.p[0],g.it.p[1]); g.it.room=rr?rr.id:null;}
@@ -711,7 +750,7 @@ function setView(v){
 /* ---------- 画面 ---------- */
 function redraw(){
   if(view==='3d'){if(T)T.rebuild();} else drawPlan();
-  $('empty').style.display=(view==='3d'&&T&&!floorRooms().length&&!floorItems().length)?'flex':'none';
+  $('empty').style.display=(view==='3d'&&T&&!floorRooms().length&&!floorItems().length&&!floorWalls().length)?'flex':'none';
   $('planoff').classList.toggle('hide',!IMG['plan:'+S.floor]);
   save();
 }
@@ -756,7 +795,7 @@ function renderInv(){
 }
 function renderCards(){
   var d=$('detail'), it=selI&&item(selI), rc=$('rcard'), r=(view==='2d'&&selR)?room(selR):null;
-  if(it||r||selO) $('pstat').textContent='';
+  if(it||r||selO||selW) $('pstat').textContent='';
   if(it){
     d.className='card on';
     d.innerHTML=(IMG[it.id]?'<img src="'+IMG[it.id]+'" alt="">':'')
@@ -776,8 +815,13 @@ function renderCards(){
   }else{d.className='card'; d.innerHTML='';}
   function stp(label,key,val,id){return '<label>'+label+'<span class="stp"><button type="button" data-a="step" data-k="'+key+'" data-d="-1" aria-label="'+label+'を減らす">−</button>'
     +'<input type="text" inputmode="decimal"'+(id?' id="'+id+'"':'')+' data-sf="'+key+'" value="'+val+'"><button type="button" data-a="step" data-k="'+key+'" data-d="1" aria-label="'+label+'を増やす">＋</button></span></label>';}
-  var o=(view==='2d'&&selO)?op(selO):null;
-  if(o&&!it){
+  var o=(view==='2d'&&selO)?op(selO):null, fw=(view==='2d'&&selW)?fwall(selW):null;
+  if(fw&&!it){
+    rc.className='card on';
+    rc.innerHTML='<div class="body"><div class="rgrid">'+stp('長さ m','wall.len',r2(Math.abs(fw.x2-fw.x1)+Math.abs(fw.z2-fw.z1)))+stp('高さ m','wall.h',r2(fw.h||WH))+'</div>'
+      +'<div class="scale"><span class="rs">ドラッグで動かせます</span><button class="btn sm danger" data-a="delwall">壁を削除</button></div></div>'
+      +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
+  }else if(o&&!it){
     rc.className='card on';
     rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">種類<select data-of="kind"><option value="door"'+(o.kind==='door'?' selected':'')+'>ドア（開き戸）</option><option value="slide"'+(o.kind==='slide'?' selected':'')+'>引き戸</option><option value="window"'+(o.kind==='window'?' selected':'')+'>窓</option></select></label>'
       +stp('幅 m','op.w',r2(o.w))+stp('位置 m','op.pos',r2(o.pos))+'</div>'
@@ -787,7 +831,8 @@ function renderCards(){
   }else if(r&&!it){
     rc.className='card on';
     rc.innerHTML='<div class="body"><div class="rgrid"><label class="full">部屋の名前<input type="text" id="r-name" data-rf="name" value="'+esc(r.name)+'"></label>'
-      +stp('幅 m','room.w',r2(r.w),'r-w')+stp('奥行 m','room.d',r2(r.d),'r-d')+'</div>'
+      +stp('幅 m','room.w',r2(r.w),'r-w')+stp('奥行 m','room.d',r2(r.d),'r-d')+stp('壁の高さ m','room.h',r2(r.wh||WH))
+      +'<label>壁（押すと外す／戻す）<span class="stp">'+[['n','奥'],['s','手前'],['w','左'],['e','右']].map(function(q){return '<button type="button" class="sd" data-a="side" data-v="'+q[0]+'" aria-pressed="'+!(r.off&&r.off[q[0]])+'">'+q[1]+'</button>';}).join('')+'</span></label></div>'
       +'<div class="scale"><label>この部屋の実際の幅 m<input type="text" inputmode="decimal" id="r-real"></label><button class="btn sm" data-a="rescale">この階の縮尺を合わせる</button>'
       +'<span class="grow"></span><button class="btn sm danger" data-a="delroom">部屋を削除</button></div></div>'
       +'<button class="x" data-a="desel" aria-label="閉じる">×</button>';
@@ -815,7 +860,7 @@ function renderDeco(){
   $('deco').innerHTML=h;
 }
 function showTab(name){['items','inv','form','deco','set'].forEach(function(t){$('t-'+t).setAttribute('aria-selected',String(t===name)); $('p-'+t).className='pane'+(t===name?' on':'');});}
-function selectItem(id){var it=item(id); if(!it) return; selI=id; selR=null; selO=null; if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;} if(view==='2d'&&!P.fit[S.floor]) fitPlan(); refresh();}
+function selectItem(id){var it=item(id); if(!it) return; selI=id; selR=null; selO=null; selW=null; if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;} if(view==='2d'&&!P.fit[S.floor]) fitPlan(); refresh();}
 
 /* ---------- 写真・AI ---------- */
 function toJpeg(file,max){
@@ -928,7 +973,7 @@ async function planAuto(){
       var len=Math.max((x1-x0)/1000*wm,(y1-y0)/1000*wm*asp), kind=(o.type==='window'||o.type==='slide')?o.type:'door';
       if(addOp(f,(x0+x1)/2000*wm,(y0+y1)/2000*wm*asp,kind,Math.max(0.5,Math.min(kind==='window'?3.6:1.8,len)),0.6)) no++;
     });
-    selI=selR=selO=null; fitNext=true; fitPlan(); refresh();
+    selI=selR=selO=selW=null; fitNext=true; fitPlan(); refresh();
     st.textContent='部屋を'+n+'個'+(no?'、ドア・窓を'+no+'個':'')+'作りました'+(Object.keys(targets).length>1?'（1階と2階に振り分け）':'')+'。縮尺は'+how+'。AIの読み取りなので、ずれている所は「選ぶ・動かす」で直してください。';
   }catch(err){st.textContent='読み取りに失敗しました（'+(err&&err.message||'通信エラー')+'）。少し待ってもう一度試してください。';}
 }
@@ -989,7 +1034,7 @@ $('form').addEventListener('submit',function(e){
   it.bought=$('f-bought').value.trim(); it.warranty=$('f-warranty').value.trim(); it.memo=$('f-memo').value.trim();
   if(E.photo){imgPut(it.id,E.photo); it.pa=E.pa;}
   if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;}
-  selI=it.id; selR=null; selO=null; openForm(it);
+  selI=it.id; selR=null; selO=null; selW=null; openForm(it);
   $('f-stat').textContent=(isNew?'登録しました。':'保存しました。')+'「間取り」で場所と向きを動かせます。';
   refresh();
 });
@@ -1050,7 +1095,7 @@ async function syPull(always){
   var fl=S.floor; S=norm(o); if(S.floors.some(function(f){return f.id===fl;})) S.floor=fl;
   lastStr=syncStr(); HIST=[]; undoUi(); try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
   SY.at=r.at; SY.dirty=false; sySave(); $('conf').classList.add('hide');
-  selI=selR=selO=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); openForm(null); if(view==='2d') fitPlan(); refresh();
+  selI=selR=selO=selW=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); openForm(null); if(view==='2d') fitPlan(); refresh();
   var ks=Object.keys(S.imgv), i, k, g, got=false;
   for(i=0;i<ks.length;i++){k=ks[i]; if(SY.up[k]!==S.imgv[k]||!IMG[k]){g=await gas({action:'imgGet',key:k}); if(g.data){dbPut(k,g.data); SY.up[k]=S.imgv[k]; sySave(); got=true;}}}
   Object.keys(IMG).forEach(function(x){if(!(x in S.imgv)){dbDel(x); delete SY.up[x]; got=true;}});
@@ -1101,44 +1146,50 @@ document.addEventListener('click',function(e){
   var a=t.dataset.a, v=t.dataset.v, it, r;
   if(a==='tab') showTab(v);
   else if(a==='view') setView(v);
-  else if(a==='floor'){S.floor=v; selI=selR=selO=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
+  else if(a==='floor'){S.floor=v; selI=selR=selO=selW=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
   else if(a==='undo') undo();
+  else if(a==='side'){r=room(selR); if(r){r.off=r.off||{}; r.off[v]=!r.off[v]; refresh();}}
+  else if(a==='delwall'){S.walls=S.walls.filter(function(x){return x.id!==selW;}); selW=null; refresh();}
   else if(a==='step'){
     var dv=(+t.dataset.d)*0.05, k=t.dataset.k, so=op(selO), sr=room(selR);
     if(k==='op.w'&&so) so.w=r2(Math.max(0.3,Math.min(20,so.w+dv)));
     else if(k==='op.pos'&&so){var g0=opSeg(so), rr0=room(so.room), ln0=(g0&&g0.h)?rr0.w:rr0.d, w0=Math.min(so.w,ln0); so.pos=r2(Math.max(w0/2,Math.min(ln0-w0/2,Math.max(w0/2,Math.min(ln0-w0/2,so.pos))+dv)));}
+    else if(k==='room.h'&&sr) sr.wh=r2(Math.max(0.1,Math.min(3,(sr.wh||WH)+dv)));
+    else if(k==='wall.h'&&fwall(selW)) fwall(selW).h=r2(Math.max(0.1,Math.min(3,(fwall(selW).h||WH)+dv)));
+    else if(k==='wall.len'&&fwall(selW)) wallLen(fwall(selW),Math.abs(fwall(selW).x2-fwall(selW).x1)+Math.abs(fwall(selW).z2-fwall(selW).z1)+dv);
     else if(k==='room.w'&&sr) sr.w=r2(Math.max(0.3,sr.w+dv));
     else if(k==='room.d'&&sr) sr.d=r2(Math.max(0.3,sr.d+dv));
     refresh();
   }
   else if(a==='nudge'){it=item(selI); if(it){it.p=[r2(it.p[0]+(+t.dataset.dx)*0.05),r2(it.p[1]+(+t.dataset.dz)*0.05)]; var nr=roomAt(it.floor,it.p[0],it.p[1]); it.room=nr?nr.id:null; refresh();}}
   else if(a==='flip'){var fo=op(selO); if(fo){if(v==='hinge') fo.hinge=(fo.hinge==='b'?'a':'b'); else fo.out=!fo.out; refresh();}}
-  else if(a==='mode'){setMode(v); if(v==='door'||v==='slide'||v==='window') $('pstat').textContent=({door:'ドア',slide:'引き戸',window:'窓'})[v]+'を付けたい壁をタップしてください。'; else $('pstat').textContent='';}
-  else if(a==='delop'){S.ops=S.ops.filter(function(o){return o.id!==selO;}); selO=null; refresh();}
+  else if(a==='mode'){setMode(v); if(v==='door'||v==='slide'||v==='window') $('pstat').textContent=({door:'ドア',slide:'引き戸',window:'窓'})[v]+'を付けたい壁をタップしてください。'; else if(v==='wall') $('pstat').textContent='壁を立てたい所を、端から端までなぞってください（縦か横にまっすぐ引けます）。'; else $('pstat').textContent='';}
+  else if(a==='delop'){S.ops=S.ops.filter(function(o){return o.id!==selO;}); selO=null; selW=null; refresh();}
   else if(a==='fit'){fitPlan(); drawPlan();}
   else if(a==='addroom'){
     var rs=floorRooms(), last=rs[rs.length-1];
     r={id:nid('r'),floor:S.floor,name:'部屋'+(rs.length+1),x:last?r2(last.x+last.w):0,z:last?last.z:0,w:3.6,d:2.7,wall:null,fl:null,light:null,lux:50};
-    S.rooms.push(r); selR=r.id; selI=null; selO=null; setMode('select'); fitPlan(); refresh();
+    S.rooms.push(r); selR=r.id; selI=null; selO=null; selW=null; setMode('select'); fitPlan(); refresh();
   }
   else if(a==='planauto') planAuto();
   else if(a==='planoff'){imgDel('plan:'+S.floor); refresh();}
   else if(a==='ff'){fFloor=v; renderChips(); renderList();}
   else if(a==='sel'){selectItem(v);}
-  else if(a==='desel'){selI=selR=selO=null; refresh();}
+  else if(a==='desel'){selI=selR=selO=selW=null; refresh();}
   else if(a==='st'){it=item(t.dataset.id); if(it){it.st=(it.st===v?'none':v); refresh();}}
   else if(a==='invreset'){S.items.forEach(function(i){i.st='none';}); refresh();}
   else if(a==='rot'){it=item(selI); if(it){it.rot=((it.rot||0)+Q)%(Math.PI*2); refresh();}}
   else if(a==='edit'){it=item(selI); if(it){openForm(it); showTab('form');}}
   else if(a==='new'){openForm(null); showTab('form');}
-  else if(a==='delitem'){it=item(E.id); if(it){S.items=S.items.filter(function(i){return i!==it;}); imgDel(it.id); if(selI===it.id) selI=null; selO=null; openForm(null); showTab('items'); refresh();}}
-  else if(a==='delroom'){r=room(selR); if(r){S.rooms=S.rooms.filter(function(x){return x!==r;}); S.items.forEach(function(i){if(i.room===r.id)i.room=null;}); S.ops=S.ops.filter(function(o){return o.room!==r.id;}); selR=null; selO=null; refresh();}}
+  else if(a==='delitem'){it=item(E.id); if(it){S.items=S.items.filter(function(i){return i!==it;}); imgDel(it.id); if(selI===it.id) selI=null; selO=null; selW=null; openForm(null); showTab('items'); refresh();}}
+  else if(a==='delroom'){r=room(selR); if(r){S.rooms=S.rooms.filter(function(x){return x!==r;}); S.items.forEach(function(i){if(i.room===r.id)i.room=null;}); S.ops=S.ops.filter(function(o){return o.room!==r.id;}); selR=null; selO=null; selW=null; refresh();}}
   else if(a==='rescale'){
     r=room(selR); var real=num($('r-real').value,0.3,50);
     if(r&&real){var k=real/r.w, f=S.floor;
       floorRooms(f).forEach(function(x){x.x=r2(x.x*k); x.z=r2(x.z*k); x.w=r2(x.w*k); x.d=r2(x.d*k);});
       floorItems(f).forEach(function(i){i.p=[r2(i.p[0]*k),r2(i.p[1]*k)];});
       floorOps(f).forEach(function(o){o.pos=r2(o.pos*k);});
+      floorWalls(f).forEach(function(q){q.x1=r2(q.x1*k); q.x2=r2(q.x2*k); q.z1=r2(q.z1*k); q.z2=r2(q.z2*k);});
       planCfg().wm=planCfg().wm*k; fitPlan(); fitNext=true; refresh();}
   }
   else if(a==='light'){r=room(t.dataset.rid); if(r){r.light=v; refresh();}}
@@ -1149,7 +1200,7 @@ document.addEventListener('click',function(e){
   else if(a==='export') exportData();
   else if(a==='sample'){sample(); fitNext=true; P.fit={}; if(view==='2d') fitPlan(); $('s-etc').textContent='サンプルの家を追加しました。'; refresh();}
   else if(a==='wipe'){
-    if(Date.now()-wipeArmed<5000){Object.keys(IMG).forEach(function(k){dbDel(k);}); var set=S.set; S=fresh(); S.set=set; selI=selR=selO=null; fitNext=true; P.fit={}; wipeArmed=0; t.textContent='全データを消す'; $('s-etc').textContent='すべて消しました。'; openForm(null); refresh();}
+    if(Date.now()-wipeArmed<5000){Object.keys(IMG).forEach(function(k){dbDel(k);}); var set=S.set; S=fresh(); S.set=set; selI=selR=selO=selW=null; fitNext=true; P.fit={}; wipeArmed=0; t.textContent='全データを消す'; $('s-etc').textContent='すべて消しました。'; openForm(null); refresh();}
     else{wipeArmed=Date.now(); t.textContent='もう一度押すと消えます'; setTimeout(function(){if(wipeArmed){wipeArmed=0; t.textContent='全データを消す';}},5000);}
   }
 });
@@ -1166,6 +1217,9 @@ document.addEventListener('change',function(e){
   else if(d.sf){var sv=num(t.value,0,50), so2=op(selO), sr2=room(selR);
     if(sv!=null){
       if(d.sf==='op.w'&&so2) so2.w=Math.max(0.3,sv); else if(d.sf==='op.pos'&&so2) so2.pos=sv;
+      else if(d.sf==='room.h'&&sr2) sr2.wh=Math.max(0.1,Math.min(3,sv));
+      else if(d.sf==='wall.h'&&fwall(selW)) fwall(selW).h=Math.max(0.1,Math.min(3,sv));
+      else if(d.sf==='wall.len'&&fwall(selW)) wallLen(fwall(selW),sv);
       else if(d.sf==='room.w'&&sr2) sr2.w=Math.max(0.3,sv); else if(d.sf==='room.d'&&sr2) sr2.d=Math.max(0.3,sv);
     }
     refresh();}
@@ -1208,7 +1262,7 @@ function importData(file){
       var j=JSON.parse(fr.result); if(!j||j.app!=='ie-no-kiroku'||!j.S||!j.S.rooms||!j.S.items) throw new Error('format');
       var key=S.set.key; Object.keys(IMG).forEach(function(k){dbDel(k);}); S=norm(j.S); S.set.key=key; S.imgv={};
       Object.keys(j.IMG||{}).forEach(function(k){imgPut(k,j.IMG[k]);});
-      selI=selR=selO=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); if(view==='2d') fitPlan(); openForm(null); refresh(); $('s-bk').textContent='読み込みました。';
+      selI=selR=selO=selW=null; fitNext=true; P.fit={}; applyTheme(); syncSettings(); if(view==='2d') fitPlan(); openForm(null); refresh(); $('s-bk').textContent='読み込みました。';
     }catch(e){$('s-bk').textContent='このファイルは読み込めませんでした。家の記録で書き出したファイルを選んでください。';}
   };
   fr.readAsText(file);
