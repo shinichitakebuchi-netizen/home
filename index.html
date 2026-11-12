@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v2.0.3
+/* 家の記録 v2.0.4
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -164,33 +164,6 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
   .tbar>*{flex:none}
 }
 .rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
-.pad{position:absolute;right:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,46px);grid-auto-rows:46px;gap:4px;touch-action:none;user-select:none;-webkit-user-select:none}
-.pad button{border:1px solid var(--line);background:var(--surface);border-radius:8px;font-size:18px;opacity:.9;touch-action:none}
-.deco .lux2{grid-column:2/-1}
-@media (max-width:819px){
-  body.ed main{grid-template-rows:minmax(300px,64%) minmax(0,1fr)}
-  .tbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-  .tbar>*{flex:none}
-}
-.rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
-.pad{position:absolute;right:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,46px);grid-auto-rows:46px;gap:4px;touch-action:none;user-select:none;-webkit-user-select:none}
-.pad button{border:1px solid var(--line);background:var(--surface);border-radius:8px;font-size:18px;opacity:.9;touch-action:none}
-.deco .lux2{grid-column:2/-1}
-@media (max-width:819px){
-  body.ed main{grid-template-rows:minmax(300px,64%) minmax(0,1fr)}
-  .tbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-  .tbar>*{flex:none}
-}
-.rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
-.pad{position:absolute;right:12px;bottom:12px;display:grid;grid-template-columns:repeat(3,46px);grid-auto-rows:46px;gap:4px;touch-action:none;user-select:none;-webkit-user-select:none}
-.pad button{border:1px solid var(--line);background:var(--surface);border-radius:8px;font-size:18px;opacity:.9;touch-action:none}
-.deco .lux2{grid-column:2/-1}
-@media (max-width:819px){
-  body.ed main{grid-template-rows:minmax(300px,64%) minmax(0,1fr)}
-  .tbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-  .tbar>*{flex:none}
-}
-.rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -236,9 +209,6 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
     </div>
     <div class="pstat hide" id="pstat" role="status"></div>
     <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
-    <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
-    <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
-    <div class="pad hide" id="pad" aria-label="歩く"><span></span><button data-f="1" data-s="0" aria-label="前へ">↑</button><span></span><button data-f="0" data-s="-1" aria-label="左へ">←</button><button data-f="-1" data-s="0" aria-label="後ろへ">↓</button><button data-f="0" data-s="1" aria-label="右へ">→</button></div>
     <div class="card" id="rcard"></div>
     <div class="card" id="detail"></div>
   </section>
@@ -268,21 +238,6 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
         <div class="pickrow">
           <label class="filebtn"><input type="file" accept="image/*" id="f-file"><span class="btn pri">写真を選ぶ</span></label>
           <span class="rs">写真から種類・サイズ・色を読み取ります</span>
-        </div>
-        <div class="pickrow">
-          <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
-          <button class="btn sm hide" type="button" id="f-glboff" data-a="glboff">3Dモデルを外す</button>
-          <span class="rs" id="f-glbstat" role="status"></span>
-        </div>
-        <div class="pickrow">
-          <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
-          <button class="btn sm hide" type="button" id="f-glboff" data-a="glboff">3Dモデルを外す</button>
-          <span class="rs" id="f-glbstat" role="status"></span>
-        </div>
-        <div class="pickrow">
-          <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
-          <button class="btn sm hide" type="button" id="f-glboff" data-a="glboff">3Dモデルを外す</button>
-          <span class="rs" id="f-glbstat" role="status"></span>
         </div>
         <div class="pickrow">
           <label class="filebtn"><input type="file" accept=".glb,model/gltf-binary" id="f-glb"><span class="btn">3Dモデル（GLB）を使う</span></label>
@@ -362,34 +317,13 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <span class="rs" id="s-mi" role="status"></span>
         </div>
 
-        <h3>モデルデータの取り込み</h3>
-        <p class="lead">Claudeのチャットで間取り図や写真から作ってもらったモデルデータ（.json）を取り込みます。ファイルに入っている階の間取りが置き換わります。合わなければ「戻す」で戻せます。</p>
-        <div class="pickrow">
-          <label class="filebtn"><input type="file" accept="application/json,.json" id="s-mimport"><span class="btn">モデルデータを取り込む</span></label>
-          <span class="rs" id="s-mi" role="status"></span>
-        </div>
-
-        <h3>モデルデータの取り込み</h3>
-        <p class="lead">Claudeのチャットで間取り図や写真から作ってもらったモデルデータ（.json）を取り込みます。ファイルに入っている階の間取りが置き換わります。合わなければ「戻す」で戻せます。</p>
-        <div class="pickrow">
-          <label class="filebtn"><input type="file" accept="application/json,.json" id="s-mimport"><span class="btn">モデルデータを取り込む</span></label>
-          <span class="rs" id="s-mi" role="status"></span>
-        </div>
-
-        <h3>モデルデータの取り込み</h3>
-        <p class="lead">Claudeのチャットで間取り図や写真から作ってもらったモデルデータ（.json）を取り込みます。ファイルに入っている階の間取りが置き換わります。合わなければ「戻す」で戻せます。</p>
-        <div class="pickrow">
-          <label class="filebtn"><input type="file" accept="application/json,.json" id="s-mimport"><span class="btn">モデルデータを取り込む</span></label>
-          <span class="rs" id="s-mi" role="status"></span>
-        </div>
-
         <h3>その他</h3>
         <div class="pickrow">
           <button class="btn" data-a="sample">サンプルの家を入れる</button>
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v2.0.3</p>
+        <p class="lead sec">家の記録 v2.0.4</p>
       </div>
     </div>
   </section>
