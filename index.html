@@ -2,14 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="家の記録">
 <title>家の記録</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&display=swap" rel="stylesheet">
 <style>
-/* 家の記録 v2.0.4
+/* 家の記録 v2.0.5
    配置: 上(横長画面では左)に3D/間取り編集、下(右)に持ち物・棚卸し・登録・内装・設定のパネル。 */
 :root{
   --bg:#F3F3F2; --surface:#FFFFFF; --ink:#313131; --muted:#74746F; --line:#DAD9D4;
@@ -164,6 +164,17 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
   .tbar>*{flex:none}
 }
 .rgrid .val{padding:6px 0;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
+/* 操作中に文字が選択されないように（入力欄だけは選べる） */
+html,body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
+html{overflow:hidden}
+body{position:fixed;inset:0;width:100%}
+input,textarea,select,.card dd{-webkit-user-select:text;user-select:text}
+button,.chip,.tabs button{touch-action:manipulation}
+header{align-items:center}
+/* パネルを閉じて3D・間取りを全面に */
+main.full{grid-template-columns:minmax(0,1fr) !important;grid-template-rows:minmax(0,1fr) !important}
+main.full .panel{display:none}
+main.full .stage{border:0}
 </style>
 </head>
 <body>
@@ -171,6 +182,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
   <h1>家の記録</h1>
   <span class="saved" id="saved"></span>
   <span class="sum" id="sum"></span>
+  <button class="btn sm" id="ptoggle" data-a="panel" aria-expanded="true">パネルを閉じる ⇥</button>
 </header>
 
 <div class="conf hide" id="conf" role="alert"><span>別の端末で先に更新されています。どちらを残しますか？</span>
@@ -323,7 +335,7 @@ form.f,.f{display:flex;flex-direction:column;gap:10px}
           <button class="btn danger" data-a="wipe" id="wipe">全データを消す</button>
           <span class="rs" id="s-etc" role="status"></span>
         </div>
-        <p class="lead sec">家の記録 v2.0.4</p>
+        <p class="lead sec">家の記録 v2.0.5</p>
       </div>
     </div>
   </section>
@@ -1186,7 +1198,7 @@ function renderDeco(){
   });
   $('deco').innerHTML=h;
 }
-function showTab(name){['items','inv','form','deco','set'].forEach(function(t){$('t-'+t).setAttribute('aria-selected',String(t===name)); $('p-'+t).className='pane'+(t===name?' on':'');});}
+function showTab(name){if(document.querySelector('main').classList.contains('full')) setPanel(true);['items','inv','form','deco','set'].forEach(function(t){$('t-'+t).setAttribute('aria-selected',String(t===name)); $('p-'+t).className='pane'+(t===name?' on':'');});}
 function selectItem(id){var it=item(id); if(!it) return; setSel('item',id); if(it.floor!==S.floor){S.floor=it.floor; fitNext=true;} if(view==='2d'&&!P.fit[S.floor]) fitPlan(); refresh();}
 
 /* ---------- 写真・AI ---------- */
@@ -1511,7 +1523,8 @@ var wipeArmed=0;
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-a]'); if(!t||t.tagName==='INPUT'||t.tagName==='SELECT') return;
   var a=t.dataset.a, v=t.dataset.v, it, r, w, o;
-  if(a==='tab') showTab(v);
+  if(a==='panel') setPanel(document.querySelector('main').classList.contains('full'));
+  else if(a==='tab') showTab(v);
   else if(a==='view') setView(v);
   else if(a==='v3'){S.set.view3=v; refresh();}
   else if(a==='floor'){S.floor=v; sel=null; fitNext=true; if(view==='2d'&&!P.fit[v]) fitPlan(); refresh();}
@@ -1623,12 +1636,26 @@ function importData(file){
 }
 function syncSettings(){$('s-theme').value=S.set.theme||'auto'; $('s-key').value=S.set.key||''; $('s-model').value=S.set.model||FALLBACKS[0];}
 
+/* ---------- パネルの開閉と、ブラウザ自体の拡大・スクロールを止める ---------- */
+function setPanel(open){
+  var m=document.querySelector('main'), b=$('ptoggle');
+  m.classList.toggle('full',!open); b.textContent=open?'パネルを閉じる ⇥':'⇤ パネルを開く'; b.setAttribute('aria-expanded',String(open));
+  try{localStorage.setItem(KEY+'_panel',open?'1':'0');}catch(e){}
+  fitNext=true; P.fit[S.floor]=false; if(T) T.resize(); if(view==='2d') fitPlan(); redraw();
+}
+['gesturestart','gesturechange','gestureend'].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault();},{passive:false});});
+document.querySelector('.stage').addEventListener('touchmove',function(e){if(!e.target.closest('.card'))e.preventDefault();},{passive:false});
+document.addEventListener('touchmove',function(e){if(e.touches&&e.touches.length>1)e.preventDefault();},{passive:false});
+window.addEventListener('scroll',function(){if(window.scrollY) window.scrollTo(0,0);});
+document.addEventListener('selectstart',function(e){if(!e.target.closest||!e.target.closest('input,textarea,select,.card dd'))e.preventDefault();});
+
 /* ---------- 起動 ---------- */
 applyTheme(); syncSettings(); syUi(); syStat(SY.on?'同期の確認中…':'保存済み（この端末）');
 arrangeAll(); lastStr=syncStr();
 try{init3D();}catch(err){T=null; $('no3d').style.display='flex';}
 initPlan(); openForm(null); undoUi();
 new MutationObserver(function(){redraw();}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+try{if(localStorage.getItem(KEY+'_panel')==='0') setPanel(false);}catch(e){}
 setView('3d');
 dbOpen().then(function(){refresh(); syncNow();});
 
